@@ -4,6 +4,7 @@ package com.hmdp.controller;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.ShopType;
 import com.hmdp.service.IShopTypeService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,11 +25,16 @@ import java.util.List;
 public class ShopTypeController {
     @Resource
     private IShopTypeService typeService;
+    @Autowired
+    private IShopTypeService iShopTypeService;
 
     @GetMapping("list")
     public Result queryTypeList() {
-        List<ShopType> typeList = typeService
-                .query().orderByAsc("sort").list();
-        return Result.ok(typeList);
+        /**
+         * 1. 优先从redis缓存中查询商铺类型缓存数据
+         * 2. 如果存在，直接返回给前端
+         * 3. 如果不存在，查询数据库，并将数据存入redis缓存
+         */
+        return iShopTypeService.queryTypeList();
     }
 }
