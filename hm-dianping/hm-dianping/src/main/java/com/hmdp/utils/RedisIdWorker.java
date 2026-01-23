@@ -14,7 +14,7 @@ import java.time.format.DateTimeFormatter;
 public class RedisIdWorker {
     private static final long BEGIN_TIME = 1767225600L;
     private static final int COUNT_BITS = 32;
-
+    @Resource
     private StringRedisTemplate stringRedisTemplate;
 
     public long nextId(String keyPrefix){
