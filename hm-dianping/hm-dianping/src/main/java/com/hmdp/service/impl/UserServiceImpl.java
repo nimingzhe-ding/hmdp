@@ -13,6 +13,7 @@ import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RegexUtils;
+import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -123,6 +124,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         //保存用户
         save(user);
         return user;
+    }
+
+    /**
+     * 登出功能
+     * @param token
+     * @return
+     */
+    @Override
+    public Result logout(String token) {
+        String key = RedisConstants.LOGIN_USER_KEY+token;
+        stringRedisTemplate.delete(key);
+        UserHolder.removeUser();
+        return Result.ok();
+
     }
 }
 
