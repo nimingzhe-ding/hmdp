@@ -1,5 +1,6 @@
 package com.hmdp;
 
+import com.hmdp.entity.Shop;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -13,6 +14,7 @@ public class HmDianPingApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(HmDianPingApplication.class, args);
+
     }
 
 }
