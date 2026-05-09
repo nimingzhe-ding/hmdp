@@ -24,7 +24,7 @@ if(redis.call('SISMEMBER',orderKey,userId) ==1) then
     return 2
 end
 ---3.扣减库存
-redis.call('incryby',stockKey,-1)
+redis.call('incrby',stockKey,-1)
 ---4.下单
 redis.call('SADD',orderKey,userId)
 return 0
