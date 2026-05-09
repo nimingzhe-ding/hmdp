@@ -17,8 +17,8 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -179,7 +179,7 @@ public Result seckillVoucher(Long voucherId) {
         Long userId = voucherOrder.getUserId();
         Long voucherId = voucherOrder.getVoucherId();
 
-        int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+        long count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
         if (count > 0) {
             log.error("用户已经购买过一次！");
             return;

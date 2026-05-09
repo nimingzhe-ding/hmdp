@@ -7,7 +7,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 
 @Configuration
 public class MvcConfig implements WebMvcConfigurer {
@@ -20,6 +20,7 @@ public class MvcConfig implements WebMvcConfigurer {
                 excludePathPatterns(
                         "/user/code",
                         "/user/login",
+                        "/ai/**",
                         "/shop/**",
                         "/shop-type/**",
                         "/upload/**",
