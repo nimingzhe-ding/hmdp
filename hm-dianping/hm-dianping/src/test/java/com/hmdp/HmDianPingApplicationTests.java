@@ -3,6 +3,7 @@ package com.hmdp;
 import com.hmdp.entity.Shop;
 import com.hmdp.service.IShopService;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.geo.Point;
@@ -18,6 +19,7 @@ import java.util.stream.Collectors;
 import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
 
 @SpringBootTest
+@Disabled("Manual Redis GEO data loader. Enable it only when MySQL and Redis are ready.")
 public class HmDianPingApplicationTests {
 
     @Resource

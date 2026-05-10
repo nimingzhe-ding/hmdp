@@ -1,6 +1,7 @@
 package com.hmdp.ai.tool;
 
 import cn.hutool.core.util.StrUtil;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Shop;
 import com.hmdp.entity.ShopType;
 import com.hmdp.entity.Voucher;
@@ -10,6 +11,7 @@ import com.hmdp.service.IShopService;
 import com.hmdp.service.IShopTypeService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.service.IVoucherService;
+import com.hmdp.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -131,15 +133,17 @@ public class HmDianPingAiTools {
     public List<Map<String, Object>> getRecentVoucherOrdersByUserId(
             @ToolParam(description = "登录用户ID；只有已登录用户才能查询自己的订单") Long userId,
             @ToolParam(description = "返回条数，建议 1 到 10", required = false) Integer limit) {
-        if (userId == null || userId <= 0) {
+        UserDTO currentUser = UserHolder.getUser();
+        if (currentUser == null || currentUser.getId() == null) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("needLogin", true);
-            result.put("message", "未提供有效用户ID，无法查询订单");
+            result.put("message", "请先登录后再查询自己的订单");
             return List.of(result);
         }
+        Long currentUserId = currentUser.getId();
         int finalLimit = normalizeLimit(limit);
         List<VoucherOrder> orders = voucherOrderService.lambdaQuery()
-                .eq(VoucherOrder::getUserId, userId)
+                .eq(VoucherOrder::getUserId, currentUserId)
                 .orderByDesc(VoucherOrder::getCreateTime)
                 .last("limit " + finalLimit)
                 .list();

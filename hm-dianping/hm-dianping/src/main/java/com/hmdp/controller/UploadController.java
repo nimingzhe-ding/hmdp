@@ -1,15 +1,22 @@
 package com.hmdp.controller;
 
-import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import com.hmdp.dto.Result;
-import com.hmdp.utils.SystemConstants;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -17,47 +24,97 @@ import java.util.UUID;
 @RequestMapping("upload")
 public class UploadController {
 
+    private static final long MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "gif", "webp");
+
+    @Value("${hmdp.upload.image-dir}")
+    private String imageUploadDir;
+
     @PostMapping("blog")
     public Result uploadImage(@RequestParam("file") MultipartFile image) {
+        if (image == null || image.isEmpty()) {
+            return Result.fail("上传文件不能为空");
+        }
+        if (image.getSize() > MAX_IMAGE_SIZE) {
+            return Result.fail("图片大小不能超过5MB");
+        }
+
+        String suffix = getValidatedSuffix(image);
+        if (suffix == null) {
+            return Result.fail("只支持 jpg、jpeg、png、gif、webp 图片");
+        }
+
         try {
-            // 获取原始文件名称
-            String originalFilename = image.getOriginalFilename();
-            // 生成新文件名
-            String fileName = createNewFileName(originalFilename);
-            // 保存文件
-            image.transferTo(new File(SystemConstants.IMAGE_UPLOAD_DIR, fileName));
-            // 返回结果
-            log.debug("文件上传成功，{}", fileName);
+            String fileName = createNewFileName(suffix);
+            Path target = resolveUploadPath(fileName);
+            Files.createDirectories(target.getParent());
+            image.transferTo(target.toFile());
+            log.debug("文件上传成功: {}", fileName);
             return Result.ok(fileName);
         } catch (IOException e) {
             throw new RuntimeException("文件上传失败", e);
         }
     }
 
-    @GetMapping("/blog/delete")
+    @RequestMapping(value = "/blog/delete", method = {RequestMethod.GET, RequestMethod.DELETE})
     public Result deleteBlogImg(@RequestParam("name") String filename) {
-        File file = new File(SystemConstants.IMAGE_UPLOAD_DIR, filename);
-        if (file.isDirectory()) {
-            return Result.fail("错误的文件名称");
+        if (StrUtil.isBlank(filename)) {
+            return Result.fail("文件名不能为空");
         }
-        FileUtil.del(file);
-        return Result.ok();
+        try {
+            Path target = resolveUploadPath(filename);
+            Path root = uploadRoot();
+            String relativePath = root.relativize(target).toString().replace("\\", "/");
+            if (!relativePath.startsWith("blogs/")) {
+                return Result.fail("错误的文件路径");
+            }
+            if (Files.isDirectory(target)) {
+                return Result.fail("错误的文件名称");
+            }
+            Files.deleteIfExists(target);
+            return Result.ok();
+        } catch (IOException e) {
+            throw new RuntimeException("文件删除失败", e);
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
+        }
     }
 
-    private String createNewFileName(String originalFilename) {
-        // 获取后缀
-        String suffix = StrUtil.subAfter(originalFilename, ".", true);
-        // 生成目录
+    private String getValidatedSuffix(MultipartFile image) {
+        String originalFilename = StrUtil.blankToDefault(image.getOriginalFilename(), "");
+        String suffix = StrUtil.subAfter(originalFilename, ".", true).toLowerCase(Locale.ROOT);
+        if (!ALLOWED_EXTENSIONS.contains(suffix)) {
+            return null;
+        }
+        String contentType = StrUtil.blankToDefault(image.getContentType(), "").toLowerCase(Locale.ROOT);
+        if (!contentType.startsWith("image/")) {
+            return null;
+        }
+        return suffix;
+    }
+
+    private String createNewFileName(String suffix) {
         String name = UUID.randomUUID().toString();
         int hash = name.hashCode();
         int d1 = hash & 0xF;
         int d2 = (hash >> 4) & 0xF;
-        // 判断目录是否存在
-        File dir = new File(SystemConstants.IMAGE_UPLOAD_DIR, StrUtil.format("/blogs/{}/{}", d1, d2));
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-        // 生成文件名
         return StrUtil.format("/blogs/{}/{}/{}.{}", d1, d2, name, suffix);
+    }
+
+    private Path resolveUploadPath(String filename) {
+        String normalizedName = filename.replace("\\", "/");
+        while (normalizedName.startsWith("/")) {
+            normalizedName = normalizedName.substring(1);
+        }
+        Path root = uploadRoot();
+        Path target = root.resolve(normalizedName).normalize();
+        if (!target.startsWith(root)) {
+            throw new IllegalArgumentException("错误的文件路径");
+        }
+        return target;
+    }
+
+    private Path uploadRoot() {
+        return Paths.get(imageUploadDir).toAbsolutePath().normalize();
     }
 }

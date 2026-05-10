@@ -6,17 +6,17 @@ spring:
     name: hmdp
   ai:
     dashscope:
-      api-key: {{DASHSCOPE_API_KEY}}
+      api-key: "${DASHSCOPE_API_KEY:}"
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
-    username: root
-    password: 120402
+    url: "${HMDP_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}"
+    username: "${HMDP_DATASOURCE_USERNAME:root}"
+    password: "${HMDP_DATASOURCE_PASSWORD:}"
   data:
     redis:
-      host: 192.168.19.130
-      port: 6379
-      password: REDIS_PASSWORD
+      host: "${HMDP_REDIS_HOST:127.0.0.1}"
+      port: ${HMDP_REDIS_PORT:6379}
+      password: "${HMDP_REDIS_PASSWORD:}"
       lettuce:
         pool:
           max-active: 10
@@ -34,6 +34,8 @@ logging:
     com.hmdp: debug
 
 hmdp:
+  upload:
+    image-dir: "${HMDP_IMAGE_UPLOAD_DIR:D:/hmdp/nginx-1.18.0/html/hmdp/imgs}"
   ai:
     model: qwen-plus
     customer-service-temperature: 0.6

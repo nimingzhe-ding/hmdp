@@ -138,8 +138,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         String lockKey = RedisConstants.LOCK_SHOP_KEY+id;
         //获取互斥锁
         Shop shop = null;
+        boolean isLock = false;
         try {
-            boolean isLock = tryLock(lockKey);
+            isLock = tryLock(lockKey);
             //判断是否获取成功
             if(!isLock){
                 //失败，休眠并重试
@@ -160,10 +161,13 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop),30L, TimeUnit.MINUTES);
 
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }finally {
             //6.释放互斥锁，返回
-            unlock(lockKey);
+            if (isLock) {
+                unlock(lockKey);
+            }
         }
         return shop;
     }
