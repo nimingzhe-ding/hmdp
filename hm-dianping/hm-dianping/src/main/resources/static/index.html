@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>探店笔记</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="探店笔记首页">
+        <span class="brand-mark">探</span>
+        <span class="brand-name">探店笔记</span>
+      </a>
+
+      <nav class="nav-tabs" aria-label="内容频道">
+        <button class="tab is-active" data-feed="hot">发现</button>
+        <button class="tab" data-feed="follow">关注</button>
+        <button class="tab" data-feed="nearby">附近</button>
+      </nav>
+
+      <form class="search-box" id="searchForm" role="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M10.8 18.1a7.3 7.3 0 1 1 0-14.6 7.3 7.3 0 0 1 0 14.6Zm0-2a5.3 5.3 0 1 0 0-10.6 5.3 5.3 0 0 0 0 10.6Zm5.1.6 3.2 3.2-1.4 1.4-3.2-3.2 1.4-1.4Z"/>
+        </svg>
+        <input id="searchInput" type="search" placeholder="搜索美食、咖啡、周末去处">
+        <button type="submit">搜索</button>
+      </form>
+
+      <button class="publish-button" id="openComposer" type="button">发布</button>
+    </header>
+
+    <main class="main-layout">
+      <aside class="rail-nav" aria-label="站内导航">
+        <button class="rail-item is-active" type="button" data-feed="hot">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2 3.4 10v10h6v-6h5.2v6h6V10L12 3.2Zm0 2.5 6.6 5.2V18h-2v-6H7.4v6h-2v-7.1L12 5.7Z"/></svg>
+          <span>发现</span>
+        </button>
+        <button class="rail-item" type="button" data-feed="follow">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.2 10.7 20C5.8 15.6 2.6 12.7 2.6 9a5 5 0 0 1 8.7-3.4A5 5 0 0 1 20 9c0 3.7-3.2 6.6-8.1 11l-1.3 1.2ZM7.6 6a3 3 0 0 0-3 3c0 2.8 2.7 5.2 7.4 9.5 4.7-4.3 7.4-6.7 7.4-9.5a3 3 0 0 0-5.5-1.7h-1.8A3 3 0 0 0 7.6 6Z"/></svg>
+          <span>关注</span>
+        </button>
+        <button class="rail-item" type="button" data-feed="nearby">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8a7 7 0 0 1 7 7c0 5.2-7 11.4-7 11.4S5 15 5 9.8a7 7 0 0 1 7-7Zm0 2a5 5 0 0 0-5 5c0 2.8 3.1 6.7 5 8.7 1.9-2 5-5.9 5-8.7a5 5 0 0 0-5-5Zm0 2.8a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"/></svg>
+          <span>附近</span>
+        </button>
+        <button class="rail-item" id="railPublish" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
+          <span>发布</span>
+        </button>
+      </aside>
+
+      <section class="content-area" aria-label="笔记内容流">
+        <div class="topic-strip" id="categoryList"></div>
+        <div class="mobile-topic-strip" id="mobileCategoryList"></div>
+        <div class="status-banner" id="statusBanner" hidden></div>
+        <div class="smart-card" id="smartCard" hidden>
+          <div class="smart-head">
+            <span>智能推荐</span>
+            <button class="text-button" id="refreshSmart" type="button">换个问法</button>
+          </div>
+          <p id="smartText"></p>
+          <div class="smart-actions">
+            <button class="chip" data-smart-query="附近适合约会的餐厅">约会餐厅</button>
+            <button class="chip" data-smart-query="人均50以内的美食">人均50</button>
+            <button class="chip" data-smart-query="周末适合拍照的店">周末拍照</button>
+          </div>
+        </div>
+        <div class="masonry-feed" id="noteFeed" aria-live="polite"></div>
+        <div class="feed-loading" id="feedLoading">正在加载更多笔记...</div>
+      </section>
+    </main>
+
+    <nav class="mobile-tabbar" aria-label="移动端导航">
+      <button class="is-active" type="button" data-feed="hot">发现</button>
+      <button type="button" data-feed="follow">关注</button>
+      <button type="button" data-feed="nearby">附近</button>
+      <button type="button" id="mobilePublish">发布</button>
+    </nav>
+  </div>
+
+  <div class="detail-drawer" id="detailDrawer" aria-hidden="true">
+    <div class="drawer-backdrop" data-close-drawer></div>
+    <article class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <button class="icon-button drawer-close" type="button" data-close-drawer aria-label="关闭详情">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/>
+        </svg>
+      </button>
+      <div class="drawer-media" id="drawerMedia"></div>
+      <div class="drawer-body">
+        <div class="author-row">
+          <img id="drawerAvatar" alt="">
+          <div>
+            <strong id="drawerAuthor"></strong>
+            <span id="drawerTime"></span>
+          </div>
+          <button class="follow-button" id="drawerFollow" type="button">关注</button>
+        </div>
+        <h1 id="drawerTitle"></h1>
+        <div class="drawer-content" id="drawerContent"></div>
+        <section class="note-smart" id="noteSmart" hidden>
+          <strong>这篇笔记怎么看</strong>
+          <p id="noteSmartText"></p>
+        </section>
+        <div class="drawer-actions">
+          <button type="button" id="drawerLike"></button>
+          <button type="button" id="drawerCollect">收藏</button>
+          <button type="button" id="drawerAnalyze">智能总结</button>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <dialog class="composer-dialog" id="composerDialog">
+    <form method="dialog" class="composer-form" id="composerForm">
+      <div class="dialog-head">
+        <h2>发布探店笔记</h2>
+        <button class="icon-button" value="cancel" aria-label="关闭发布弹窗">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/>
+          </svg>
+        </button>
+      </div>
+      <label>
+        标题
+        <input name="title" maxlength="80" required placeholder="比如：人均 30 的宝藏茶餐厅">
+      </label>
+      <label>
+        图片地址
+        <input name="images" placeholder="/imgs/blogs/blog1.jpg，多个地址用英文逗号分隔">
+      </label>
+      <label>
+        店铺 ID
+        <input name="shopId" type="number" min="1" placeholder="关联店铺，选填">
+      </label>
+      <label>
+        正文
+        <textarea name="content" rows="7" required placeholder="分享环境、菜品、价格、路线和适合的人群"></textarea>
+      </label>
+      <div class="dialog-actions">
+        <button class="ghost-button" value="cancel">取消</button>
+        <button class="publish-button" value="default">发布</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

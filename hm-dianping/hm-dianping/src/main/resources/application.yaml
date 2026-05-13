@@ -14,9 +14,9 @@ spring:
     password: "${HMDP_DATASOURCE_PASSWORD:}"
   data:
     redis:
-      host: "${HMDP_REDIS_HOST:127.0.0.1}"
+      host: "${HMDP_REDIS_HOST:192.168.19.130}"
       port: ${HMDP_REDIS_PORT:6379}
-      password: "${HMDP_REDIS_PASSWORD:}"
+      password: "${HMDP_REDIS_PASSWORD:120402}"
       lettuce:
         pool:
           max-active: 10
