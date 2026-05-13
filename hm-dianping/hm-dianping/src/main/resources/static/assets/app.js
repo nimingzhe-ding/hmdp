@@ -1,3 +1,6 @@
+// ------------------------------
+// Global state
+// ------------------------------
 const state = {
   notes: [],
   page: 1,
@@ -5,30 +8,57 @@ const state = {
   hasMore: true,
   query: "",
   feed: "hot",
+  mode: "feed",
   category: "all",
   currentNote: null,
+  currentUser: null,
+  trends: [],
+  collected: new Set(JSON.parse(localStorage.getItem("hmdp_collected") || "[]")),
+  followed: new Set(JSON.parse(localStorage.getItem("hmdp_followed") || "[]")),
   aiSessionId: localStorage.getItem("hmdp_ai_session") || crypto.randomUUID()
 };
 
 localStorage.setItem("hmdp_ai_session", state.aiSessionId);
 
+// ------------------------------
+// DOM references
+// ------------------------------
 const els = {
   feed: document.querySelector("#noteFeed"),
   loading: document.querySelector("#feedLoading"),
   status: document.querySelector("#statusBanner"),
   searchForm: document.querySelector("#searchForm"),
   search: document.querySelector("#searchInput"),
+  suggestPopover: document.querySelector("#suggestPopover"),
   categoryList: document.querySelector("#categoryList"),
   mobileCategoryList: document.querySelector("#mobileCategoryList"),
   drawer: document.querySelector("#detailDrawer"),
+  drawerMedia: document.querySelector("#drawerMedia"),
+  drawerThumbs: document.querySelector("#drawerThumbs"),
   composer: document.querySelector("#composerDialog"),
   composerForm: document.querySelector("#composerForm"),
+  imageFiles: document.querySelector("#imageFiles"),
+  uploadPreview: document.querySelector("#uploadPreview"),
+  loginDialog: document.querySelector("#loginDialog"),
+  loginForm: document.querySelector("#loginForm"),
   smartCard: document.querySelector("#smartCard"),
   smartText: document.querySelector("#smartText"),
   noteSmart: document.querySelector("#noteSmart"),
-  noteSmartText: document.querySelector("#noteSmartText")
+  noteSmartText: document.querySelector("#noteSmartText"),
+  commentForm: document.querySelector("#commentForm"),
+  commentInput: document.querySelector("#commentInput"),
+  commentList: document.querySelector("#commentList"),
+  commentCount: document.querySelector("#commentCount"),
+  profileAvatar: document.querySelector("#profileAvatar"),
+  profileName: document.querySelector("#profileName"),
+  profileHint: document.querySelector("#profileHint"),
+  trendList: document.querySelector("#trendList")
 };
 
+// ------------------------------
+// Demo data used when backend data is not available
+// ------------------------------
+const fallbackAvatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80";
 const fallbackNotes = [
   {
     id: 9001,
@@ -37,8 +67,9 @@ const fallbackNotes = [
     content: "复古灯牌、卡座和热奶茶都很有氛围。推荐黯然销魂饭、漏奶华和丝袜奶茶，适合朋友小聚，也适合下班后快速补充快乐。",
     liked: 128,
     comments: 18,
+    userId: 2,
     name: "阿茶今天吃什么",
-    icon: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80",
+    icon: fallbackAvatar,
     createTime: "2026-05-10T20:10:00"
   },
   {
@@ -48,6 +79,7 @@ const fallbackNotes = [
     content: "环境有很多鲜花和暖光，晚餐时段更漂亮。牛排、意面和烤鱼表现稳定，价格略高但适合纪念日。",
     liked: 256,
     comments: 36,
+    userId: 3,
     name: "慢慢探店",
     icon: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=120&q=80",
     createTime: "2026-05-09T18:42:00"
@@ -59,6 +91,7 @@ const fallbackNotes = [
     content: "路线不难，适合第一次体验。建议下午四点后去，光线更柔和，拍照也不晒。",
     liked: 91,
     comments: 9,
+    userId: 4,
     name: "城市出逃计划",
     icon: "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=120&q=80",
     createTime: "2026-05-08T16:05:00"
@@ -70,6 +103,7 @@ const fallbackNotes = [
     content: "插座多，座位间距舒服，手冲和巴斯克都不错。工作日来更安静。",
     liked: 173,
     comments: 24,
+    userId: 5,
     name: "咖啡地图",
     icon: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=120&q=80",
     createTime: "2026-05-07T14:24:00"
@@ -87,6 +121,11 @@ const fallbackCategories = [
   { id: "new", name: "新店" }
 ];
 
+const fallbackSuggestions = ["杭州周末", "港式茶餐厅", "咖啡拍照", "人均50", "约会餐厅", "新店打卡", "一个人吃饭", "生日聚餐"];
+
+// ------------------------------
+// Request and formatting helpers
+// ------------------------------
 function token() {
   return localStorage.getItem("hmdp_token") || "";
 }
@@ -130,7 +169,7 @@ function normalizeImage(src) {
 
 function stripHtml(value) {
   const temp = document.createElement("div");
-  temp.innerHTML = value.replaceAll("<br/>", "\n").replaceAll("<br>", "\n");
+  temp.innerHTML = String(value).replaceAll("<br/>", "\n").replaceAll("<br>", "\n");
   return temp.textContent || temp.innerText || "";
 }
 
@@ -139,15 +178,86 @@ function showStatus(message) {
   els.status.hidden = false;
 }
 
+function trackEvent(eventType, options = {}) {
+  request("/note-event", {
+    method: "POST",
+    body: JSON.stringify({
+      eventType,
+      blogId: options.blogId || null,
+      scene: options.scene || state.feed,
+      keyword: options.keyword || state.query || null
+    })
+  }).catch(() => {
+    // 行为采集不影响主流程，失败时静默忽略。
+  });
+}
+
 function hideStatus() {
   els.status.hidden = true;
 }
 
+function requireLogin() {
+  if (token()) return true;
+  els.loginDialog.showModal();
+  return false;
+}
+
+// ------------------------------
+// User session and profile panel
+// ------------------------------
+async function initUser() {
+  if (!token()) {
+    renderUser(null);
+    return;
+  }
+  try {
+    const user = await request("/user/me");
+    state.currentUser = user;
+    renderUser(user);
+    loadProfileStats();
+  } catch {
+    localStorage.removeItem("hmdp_token");
+    renderUser(null);
+  }
+}
+
+function renderUser(user) {
+  if (!user) {
+    els.profileAvatar.src = fallbackAvatar;
+    els.profileName.textContent = "未登录";
+    els.profileHint.textContent = "登录后发布、点赞、评论";
+    document.querySelector("#loginButton").textContent = "登录";
+    document.querySelector("#profileLogin").textContent = "手机号登录";
+    return;
+  }
+  els.profileAvatar.src = normalizeImage(user.icon) || fallbackAvatar;
+  els.profileName.textContent = user.nickName || "探店用户";
+  els.profileHint.textContent = `ID ${user.id}`;
+  document.querySelector("#loginButton").textContent = "已登录";
+  document.querySelector("#profileLogin").textContent = "退出登录";
+}
+
+async function loadProfileStats() {
+  if (!token()) return;
+  try {
+    const profile = await request("/content/profile");
+    document.querySelector("#statNotes").textContent = profile.notes || 0;
+    document.querySelector("#statLikes").textContent = profile.likes || 0;
+    document.querySelector("#statCollects").textContent = profile.collects || 0;
+    if (profile.nickName) els.profileName.textContent = profile.nickName;
+    if (profile.icon) els.profileAvatar.src = normalizeImage(profile.icon);
+  } catch {
+    // 统计接口异常时保留当前用户基础信息，不影响浏览主流程。
+  }
+}
+
+// ------------------------------
+// Topic filters
+// ------------------------------
 async function loadCategories() {
   try {
     const data = await request("/shop-type/list");
-    const categories = [{ id: "all", name: "推荐" }, ...data.map(item => ({ id: item.id, name: item.name }))];
-    renderCategories(categories);
+    renderCategories([{ id: "all", name: "推荐" }, ...data.map(item => ({ id: item.id, name: item.name }))]);
   } catch {
     renderCategories(fallbackCategories);
   }
@@ -176,36 +286,38 @@ function renderCategories(categories) {
   });
 }
 
+// ------------------------------
+// Note feed loading and rendering
+// ------------------------------
 async function loadNotes() {
   if (state.loading || !state.hasMore) return;
+  if ((state.feed === "follow" || state.mode === "mine" || state.mode === "collections") && !token()) {
+    requireLogin();
+    state.hasMore = false;
+    els.loading.textContent = "登录后查看你的内容";
+    return;
+  }
   state.loading = true;
   els.loading.textContent = "正在加载更多笔记...";
   try {
-    let data;
-    if (state.feed === "follow") {
-      data = await request(`/blog/of/follow?lastId=${Date.now()}&offset=0`);
-      data = data?.list || [];
-    } else {
-      data = await request(`/blog/hot?current=${state.page}`);
-    }
-
-    let notes = (Array.isArray(data) ? data : []).map(normalizeNote);
-    if (state.query) {
-      const q = state.query.toLowerCase();
-      notes = notes.filter(note => `${note.title} ${note.content} ${note.name}`.toLowerCase().includes(q));
-    }
-
+    const data = await request(buildContentUrl());
+    let notes = (Array.isArray(data?.list) ? data.list : []).map(normalizeNote);
     if (!notes.length && state.page === 1) {
-      notes = fallbackNotes.map(normalizeNote);
-      showStatus("当前使用示例内容预览前端效果；后端接口和图片服务就绪后会自动显示真实笔记。");
+      if (state.mode === "feed") {
+        notes = fallbackNotes.map(normalizeNote);
+        showStatus("当前使用示例内容预览前端效果；后端接口和图片服务就绪后会自动显示真实笔记。");
+      } else {
+        showStatus(state.mode === "mine" ? "你还没有发布笔记，可以先发布第一篇。" : "你还没有收藏笔记。");
+      }
     } else if (notes.length) {
       hideStatus();
     }
-
     appendNotes(notes);
     state.notes.push(...notes);
+    notes.forEach(note => trackEvent("impression", { blogId: note.id, scene: state.mode }));
+    loadProfileStats();
     state.page += 1;
-    state.hasMore = notes.length >= 4 && state.page < 8;
+    state.hasMore = Boolean(data?.hasMore);
   } catch {
     if (state.page === 1) {
       const notes = fallbackNotes.map(normalizeNote);
@@ -218,6 +330,19 @@ async function loadNotes() {
     state.loading = false;
     els.loading.textContent = state.hasMore ? "向下滚动加载更多" : "已经到底了";
   }
+}
+
+function buildContentUrl() {
+  const params = new URLSearchParams({ current: String(state.page) });
+  if (state.mode === "mine") {
+    return `/content/mine?${params.toString()}`;
+  }
+  if (state.mode === "collections") {
+    return `/content/collections?${params.toString()}`;
+  }
+  params.set("channel", state.feed);
+  if (state.query) params.set("query", state.query);
+  return `/content/feed?${params.toString()}`;
 }
 
 function appendNotes(notes) {
@@ -233,7 +358,9 @@ function createNoteCard(note) {
   button.type = "button";
   button.addEventListener("click", () => openDrawer(note));
   button.innerHTML = `
-    <img class="note-image" style="--ratio:${note.ratio}" src="${normalizeImage(note.image)}" alt="${escapeHtml(note.title)}" loading="lazy">
+    <div class="note-cover">
+      <img class="note-image" style="--ratio:${note.ratio}" src="${normalizeImage(note.image)}" alt="${escapeHtml(note.title)}" loading="lazy">
+    </div>
     <div class="note-body">
       <h2 class="note-title">${escapeHtml(note.title)}</h2>
       <div class="note-meta">
@@ -241,7 +368,7 @@ function createNoteCard(note) {
           <img class="avatar" src="${normalizeImage(note.icon)}" alt="">
           <span>${escapeHtml(note.name)}</span>
         </span>
-        <span class="like-count">♡ ${note.liked}</span>
+        <span class="like-count"><span aria-hidden="true">♥</span>${note.liked}</span>
       </div>
     </div>
   `;
@@ -249,25 +376,61 @@ function createNoteCard(note) {
   return card;
 }
 
-function openDrawer(note) {
+// ------------------------------
+// Note detail drawer and image carousel
+// ------------------------------
+async function openDrawer(note) {
+  try {
+    const freshNote = await request(`/content/note/${note.id}`);
+    note = normalizeNote(freshNote);
+  } catch {
+    // 详情聚合接口不可用时继续展示卡片已有数据。
+  }
   state.currentNote = note;
   els.noteSmart.hidden = true;
   els.noteSmartText.textContent = "";
-  document.querySelector("#drawerMedia").innerHTML = (note.images.length ? note.images : [note.image])
-    .slice(0, 5)
-    .map(src => `<img src="${normalizeImage(src)}" alt="${escapeHtml(note.title)}">`)
-    .join("");
+  renderDrawerImages(note);
   document.querySelector("#drawerAvatar").src = normalizeImage(note.icon);
   document.querySelector("#drawerAuthor").textContent = note.name;
   document.querySelector("#drawerTime").textContent = formatTime(note.createTime);
   document.querySelector("#drawerTitle").textContent = note.title;
   document.querySelector("#drawerContent").textContent = note.content || "这个作者还没有填写更多内容。";
-  document.querySelector("#drawerLike").textContent = `喜欢 ${note.liked}`;
+  document.querySelector("#drawerLike").textContent = `♥ ${note.liked}`;
+  document.querySelector("#drawerCollect").textContent = state.collected.has(String(note.id)) ? "★ 已收藏" : "☆ 收藏";
+  document.querySelector("#drawerFollow").textContent = state.followed.has(String(note.userId)) ? "已关注" : "关注";
+  if (note.isCollect) state.collected.add(String(note.id));
+  if (note.isFollow) state.followed.add(String(note.userId));
+  document.querySelector("#drawerCollect").textContent = state.collected.has(String(note.id)) ? "★ 已收藏" : "☆ 收藏";
+  document.querySelector("#drawerFollow").textContent = state.followed.has(String(note.userId)) ? "已关注" : "关注";
   document.querySelector("#drawerLike").onclick = () => likeNote(note);
+  document.querySelector("#drawerCollect").onclick = () => toggleCollect(note);
+  document.querySelector("#drawerFollow").onclick = () => toggleFollow(note);
   document.querySelector("#drawerAnalyze").onclick = () => analyzeCurrentNote(note);
   els.drawer.classList.add("is-open");
   els.drawer.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
+  trackEvent("detail", { blogId: note.id, scene: "detail" });
+  loadCollectState(note);
+  loadComments(note.id);
+}
+
+function renderDrawerImages(note) {
+  const images = (note.images.length ? note.images : [note.image]).slice(0, 9);
+  const setActive = index => {
+    els.drawerMedia.innerHTML = `<img src="${normalizeImage(images[index])}" alt="${escapeHtml(note.title)}">`;
+    els.drawerThumbs.querySelectorAll("button").forEach((button, buttonIndex) => {
+      button.classList.toggle("is-active", buttonIndex === index);
+    });
+  };
+  els.drawerThumbs.innerHTML = images.map((src, index) => `
+    <button type="button" class="${index === 0 ? "is-active" : ""}" data-index="${index}">
+      <img src="${normalizeImage(src)}" alt="">
+    </button>
+  `).join("");
+  els.drawerThumbs.querySelectorAll("button").forEach(button => {
+    button.addEventListener("click", () => setActive(Number(button.dataset.index)));
+  });
+  setActive(0);
 }
 
 function closeDrawer() {
@@ -276,18 +439,134 @@ function closeDrawer() {
   document.body.style.overflow = "";
 }
 
+// ------------------------------
+// Like, collect, and follow interactions
+// ------------------------------
 async function likeNote(note) {
+  if (!requireLogin()) return;
   try {
     await request(`/blog/like/${note.id}`, { method: "PUT" });
+    trackEvent("like", { blogId: note.id, scene: "detail" });
     note.liked += note.isLike ? -1 : 1;
     note.isLike = !note.isLike;
-    document.querySelector("#drawerLike").textContent = `喜欢 ${note.liked}`;
-    resetAndLoad(false);
+    document.querySelector("#drawerLike").textContent = `♥ ${note.liked}`;
   } catch {
-    showStatus("点赞需要登录。可以先调用 /user/login 获取 token，并存入 localStorage 的 hmdp_token。");
+    showStatus("点赞失败，请稍后再试。");
   }
 }
 
+function toggleCollect(note) {
+  if (!requireLogin()) return;
+  const id = String(note.id);
+  const next = !state.collected.has(id);
+  request(`/blog-collect/${note.id}/${next}`, { method: "PUT" })
+    .then(() => {
+      if (next) state.collected.add(id);
+      else state.collected.delete(id);
+      trackEvent(next ? "collect" : "uncollect", { blogId: note.id, scene: "detail" });
+      localStorage.setItem("hmdp_collected", JSON.stringify([...state.collected]));
+      document.querySelector("#drawerCollect").textContent = next ? "★ 已收藏" : "☆ 收藏";
+      document.querySelector("#statCollects").textContent = state.collected.size;
+    })
+    .catch(() => showStatus("收藏失败，请确认数据库已执行收藏表升级脚本。"));
+}
+
+async function loadCollectState(note) {
+  if (!token()) return;
+  try {
+    const collected = await request(`/blog-collect/or/not/${note.id}`);
+    const id = String(note.id);
+    if (collected) state.collected.add(id);
+    else state.collected.delete(id);
+    localStorage.setItem("hmdp_collected", JSON.stringify([...state.collected]));
+    document.querySelector("#drawerCollect").textContent = collected ? "★ 已收藏" : "☆ 收藏";
+  } catch {
+    // 收藏表未升级时保留本地状态，避免影响浏览主流程。
+  }
+}
+
+async function toggleFollow(note) {
+  if (!requireLogin()) return;
+  const id = String(note.userId || "");
+  const next = !state.followed.has(id);
+  try {
+    if (note.userId) await request(`/follow/${note.userId}/${next}`, { method: "PUT" });
+    if (next) state.followed.add(id);
+    else state.followed.delete(id);
+    localStorage.setItem("hmdp_followed", JSON.stringify([...state.followed]));
+    document.querySelector("#drawerFollow").textContent = next ? "已关注" : "关注";
+  } catch {
+    showStatus("关注失败，请稍后再试。");
+  }
+}
+
+// ------------------------------
+// Comments
+// ------------------------------
+async function loadComments(blogId) {
+  els.commentList.innerHTML = `<p class="empty-text">正在加载评论...</p>`;
+  try {
+    const data = await request(`/blog-comments/of/blog?blogId=${blogId}`);
+    const comments = Array.isArray(data) ? data : [];
+    els.commentCount.textContent = comments.length;
+    renderComments(comments);
+  } catch {
+    els.commentCount.textContent = "0";
+    renderComments([]);
+  }
+}
+
+function renderComments(comments) {
+  if (!comments.length) {
+    els.commentList.innerHTML = `<p class="empty-text">还没有评论，来抢第一条。</p>`;
+    return;
+  }
+  els.commentList.innerHTML = comments.map(comment => `
+    <article class="comment-item">
+      <img src="${normalizeImage(comment.icon) || fallbackAvatar}" alt="">
+      <div>
+        <strong>${escapeHtml(comment.name || "探店用户")}</strong>
+        <p>${escapeHtml(comment.content)}</p>
+        <span>${formatTime(comment.createTime)} · <button class="comment-like" type="button" data-comment-id="${comment.id}">♡ ${comment.liked || 0}</button></span>
+      </div>
+    </article>
+  `).join("");
+  els.commentList.querySelectorAll(".comment-like").forEach(button => {
+    button.addEventListener("click", () => likeComment(button.dataset.commentId));
+  });
+}
+
+async function likeComment(commentId) {
+  if (!requireLogin()) return;
+  try {
+    await request(`/blog-comments/like/${commentId}`, { method: "PUT" });
+    loadComments(state.currentNote.id);
+  } catch {
+    showStatus("评论点赞失败，请稍后再试。");
+  }
+}
+
+async function submitComment(event) {
+  event.preventDefault();
+  if (!state.currentNote || !requireLogin()) return;
+  const content = els.commentInput.value.trim();
+  if (!content) return;
+  try {
+    await request("/blog-comments", {
+      method: "POST",
+      body: JSON.stringify({ blogId: state.currentNote.id, content })
+    });
+    trackEvent("comment", { blogId: state.currentNote.id, scene: "detail" });
+    els.commentInput.value = "";
+    loadComments(state.currentNote.id);
+  } catch {
+    showStatus("评论失败，请确认已登录。");
+  }
+}
+
+// ------------------------------
+// Feed reset and AI recommendation
+// ------------------------------
 function resetAndLoad(clearStatus = true) {
   state.page = 1;
   state.hasMore = true;
@@ -336,11 +615,152 @@ async function analyzeCurrentNote(note) {
 }
 
 function switchFeed(feed) {
+  state.mode = "feed";
   state.feed = feed;
   document.querySelectorAll("[data-feed]").forEach(item => {
     item.classList.toggle("is-active", item.dataset.feed === feed);
   });
   resetAndLoad();
+}
+
+function switchPersonalMode(mode) {
+  if (!requireLogin()) return;
+  state.mode = mode;
+  state.query = "";
+  els.search.value = "";
+  document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
+  resetAndLoad();
+}
+
+// ------------------------------
+// Publish workflow with image upload
+// ------------------------------
+async function uploadSelectedImages() {
+  const files = [...els.imageFiles.files];
+  const uploaded = [];
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const name = await request("/upload/blog", { method: "POST", body: formData });
+    uploaded.push(`/imgs${name}`);
+  }
+  return uploaded;
+}
+
+async function submitComposer(event) {
+  event.preventDefault();
+  if (!requireLogin()) return;
+  const submitButton = els.composerForm.querySelector(".publish-button");
+  submitButton.disabled = true;
+  submitButton.textContent = "发布中";
+  const form = new FormData(els.composerForm);
+  try {
+    const uploaded = await uploadSelectedImages();
+    const manualImages = String(form.get("images") || "").trim();
+    const payload = {
+      title: form.get("title"),
+      images: uploaded.length ? uploaded.join(",") : manualImages,
+      shopId: form.get("shopId") ? Number(form.get("shopId")) : null,
+      content: form.get("content")
+    };
+    await request("/blog", { method: "POST", body: JSON.stringify(payload) });
+    els.composer.close();
+    els.composerForm.reset();
+    els.uploadPreview.innerHTML = "";
+    resetAndLoad();
+  } catch {
+    showStatus("发布失败，请确认已登录，且图片、店铺信息有效。");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "发布";
+  }
+}
+
+// ------------------------------
+// Login workflow
+// ------------------------------
+async function sendCode() {
+  const phone = els.loginForm.elements.phone.value.trim();
+  if (!phone) return;
+  try {
+    await request(`/user/code?phone=${encodeURIComponent(phone)}`, { method: "POST" });
+    showStatus("验证码已生成，请查看后端日志。");
+  } catch {
+    showStatus("验证码发送失败，请检查手机号格式。");
+  }
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  const payload = {
+    phone: els.loginForm.elements.phone.value.trim(),
+    code: els.loginForm.elements.code.value.trim()
+  };
+  try {
+    const loginToken = await request("/user/login", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    localStorage.setItem("hmdp_token", loginToken);
+    els.loginDialog.close();
+    await initUser();
+    resetAndLoad();
+  } catch {
+    showStatus("登录失败，请确认验证码正确。");
+  }
+}
+
+// ------------------------------
+// Search suggestions and trend ranking
+// ------------------------------
+function renderSuggestions(value = "") {
+  const q = value.trim();
+  const source = state.trends.length ? state.trends.map(item => item.keyword) : fallbackSuggestions;
+  const list = source.filter(item => !q || item.includes(q)).slice(0, 6);
+  els.suggestPopover.innerHTML = list.map(item => `<button type="button" data-suggestion="${item}">${item}</button>`).join("");
+  els.suggestPopover.classList.toggle("is-open", list.length > 0 && document.activeElement === els.search);
+  els.suggestPopover.querySelectorAll("button").forEach(button => {
+    button.addEventListener("click", () => {
+      state.query = button.dataset.suggestion;
+      els.search.value = state.query;
+      els.suggestPopover.classList.remove("is-open");
+      resetAndLoad();
+      loadSmartRecommendation(state.query);
+    });
+  });
+}
+
+async function loadTrends() {
+  try {
+    const data = await request("/content/trends");
+    state.trends = Array.isArray(data) && data.length
+      ? data
+      : fallbackSuggestions.map((keyword, index) => ({ keyword, heat: 80 - index * 5 }));
+  } catch {
+    state.trends = fallbackSuggestions.map((keyword, index) => ({ keyword, heat: 80 - index * 5 }));
+  }
+  renderTrends();
+}
+
+function renderTrends() {
+  if (!els.trendList) return;
+  els.trendList.innerHTML = state.trends.slice(0, 6).map((item, index) => `
+    <button type="button" data-trend="${escapeHtml(item.keyword)}">
+      <strong>${index + 1}</strong>
+      <span>${escapeHtml(item.keyword)}</span>
+      <small>${item.heat || ""}</small>
+    </button>
+  `).join("");
+  els.trendList.querySelectorAll("button").forEach(button => {
+    button.addEventListener("click", () => {
+      state.mode = "feed";
+      state.query = button.dataset.trend;
+      els.search.value = state.query;
+      trackEvent("search", { scene: "trend", keyword: state.query });
+      resetAndLoad();
+      loadSmartRecommendation(state.query);
+    });
+  });
 }
 
 function formatTime(value) {
@@ -360,39 +780,36 @@ function escapeHtml(value) {
   })[char]);
 }
 
-async function submitComposer(event) {
-  event.preventDefault();
-  const form = new FormData(els.composerForm);
-  const payload = {
-    title: form.get("title"),
-    images: form.get("images"),
-    shopId: form.get("shopId") ? Number(form.get("shopId")) : null,
-    content: form.get("content")
-  };
-  try {
-    await request("/blog", { method: "POST", body: JSON.stringify(payload) });
-    els.composer.close();
-    els.composerForm.reset();
-    resetAndLoad();
-  } catch {
-    showStatus("发布需要登录，并且需要有效的店铺/用户数据。");
-  }
-}
-
+// ------------------------------
+// Event binding
+// ------------------------------
 els.searchForm.addEventListener("submit", event => {
   event.preventDefault();
+  state.mode = "feed";
   state.query = els.search.value.trim();
+  els.suggestPopover.classList.remove("is-open");
+  trackEvent("search", { scene: "search", keyword: state.query });
   resetAndLoad();
   loadSmartRecommendation(state.query);
 });
 
 let searchTimer;
+els.search.addEventListener("focus", () => renderSuggestions(els.search.value));
 els.search.addEventListener("input", () => {
+  renderSuggestions(els.search.value);
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
+    state.mode = "feed";
     state.query = els.search.value.trim();
     resetAndLoad();
   }, 280);
+});
+
+els.imageFiles.addEventListener("change", () => {
+  els.uploadPreview.innerHTML = [...els.imageFiles.files].map(file => {
+    const url = URL.createObjectURL(file);
+    return `<img src="${url}" alt="">`;
+  }).join("");
 });
 
 document.querySelectorAll("[data-feed]").forEach(button => {
@@ -401,6 +818,7 @@ document.querySelectorAll("[data-feed]").forEach(button => {
 
 document.querySelectorAll("[data-smart-query]").forEach(button => {
   button.addEventListener("click", () => {
+    state.mode = "feed";
     state.query = button.dataset.smartQuery;
     els.search.value = state.query;
     resetAndLoad();
@@ -409,15 +827,32 @@ document.querySelectorAll("[data-smart-query]").forEach(button => {
 });
 
 document.querySelector("#refreshSmart").addEventListener("click", () => {
-  const question = state.query || "推荐几个适合今天去的店";
-  loadSmartRecommendation(question);
+  loadSmartRecommendation(state.query || "推荐几个适合今天去的店");
 });
 
 document.querySelectorAll("[data-close-drawer]").forEach(item => item.addEventListener("click", closeDrawer));
-document.querySelector("#openComposer").addEventListener("click", () => els.composer.showModal());
-document.querySelector("#railPublish").addEventListener("click", () => els.composer.showModal());
-document.querySelector("#mobilePublish").addEventListener("click", () => els.composer.showModal());
+document.querySelector("#openComposer").addEventListener("click", () => requireLogin() && els.composer.showModal());
+document.querySelector("#railPublish").addEventListener("click", () => requireLogin() && els.composer.showModal());
+document.querySelector("#mobilePublish").addEventListener("click", () => requireLogin() && els.composer.showModal());
+document.querySelector("#loginButton").addEventListener("click", () => els.loginDialog.showModal());
+document.querySelector("#profileLogin").addEventListener("click", () => {
+  if (token()) {
+    localStorage.removeItem("hmdp_token");
+    state.currentUser = null;
+    state.mode = "feed";
+    renderUser(null);
+    resetAndLoad();
+  } else {
+    els.loginDialog.showModal();
+  }
+});
+document.querySelector("#showMyNotes").addEventListener("click", () => switchPersonalMode("mine"));
+document.querySelector("#showMyCollections").addEventListener("click", () => switchPersonalMode("collections"));
+document.querySelector("#refreshTrends").addEventListener("click", loadTrends);
+document.querySelector("#sendCodeButton").addEventListener("click", sendCode);
 els.composerForm.addEventListener("submit", submitComposer);
+els.loginForm.addEventListener("submit", submitLogin);
+els.commentForm.addEventListener("submit", submitComment);
 
 window.addEventListener("keydown", event => {
   if (event.key === "Escape") closeDrawer();
@@ -428,5 +863,7 @@ window.addEventListener("scroll", () => {
   if (nearBottom) loadNotes();
 }, { passive: true });
 
+initUser();
 loadCategories();
+loadTrends();
 loadNotes();

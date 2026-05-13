@@ -37,7 +37,11 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/shop/**",
                         "/shop-type/**",
                         "/voucher/**",
+                        "/content/**",
                         "/ai/query/chat",
+                        "/note-event",
+                        "/blog-comments/of/blog",
+                        "/blog-collect/or/not/**",
                         "/blog/hot"
                 ).addPathPatterns("/**").order(1);
         //刷新token拦截器

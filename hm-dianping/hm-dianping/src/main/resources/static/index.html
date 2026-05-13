@@ -8,6 +8,7 @@
 </head>
 <body>
   <div class="app-shell">
+    <!-- 顶部主导航：品牌、频道、搜索、登录发布入口 -->
     <header class="topbar">
       <a class="brand" href="/" aria-label="探店笔记首页">
         <span class="brand-mark">探</span>
@@ -24,14 +25,19 @@
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M10.8 18.1a7.3 7.3 0 1 1 0-14.6 7.3 7.3 0 0 1 0 14.6Zm0-2a5.3 5.3 0 1 0 0-10.6 5.3 5.3 0 0 0 0 10.6Zm5.1.6 3.2 3.2-1.4 1.4-3.2-3.2 1.4-1.4Z"/>
         </svg>
-        <input id="searchInput" type="search" placeholder="搜索美食、咖啡、周末去处">
+        <input id="searchInput" type="search" autocomplete="off" placeholder="搜索美食、咖啡、周末去处">
         <button type="submit">搜索</button>
+        <div class="suggest-popover" id="suggestPopover"></div>
       </form>
 
-      <button class="publish-button" id="openComposer" type="button">发布</button>
+      <div class="account-actions">
+        <button class="ghost-button" id="loginButton" type="button">登录</button>
+        <button class="publish-button" id="openComposer" type="button">发布</button>
+      </div>
     </header>
 
     <main class="main-layout">
+      <!-- 左侧导航：桌面端固定入口，移动端由底部 Tab 承接 -->
       <aside class="rail-nav" aria-label="站内导航">
         <button class="rail-item is-active" type="button" data-feed="hot">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2 3.4 10v10h6v-6h5.2v6h6V10L12 3.2Zm0 2.5 6.6 5.2V18h-2v-6H7.4v6h-2v-7.1L12 5.7Z"/></svg>
@@ -51,6 +57,7 @@
         </button>
       </aside>
 
+      <!-- 中央内容区：频道筛选、AI 搜索推荐、瀑布流笔记 -->
       <section class="content-area" aria-label="笔记内容流">
         <div class="topic-strip" id="categoryList"></div>
         <div class="mobile-topic-strip" id="mobileCategoryList"></div>
@@ -70,8 +77,43 @@
         <div class="masonry-feed" id="noteFeed" aria-live="polite"></div>
         <div class="feed-loading" id="feedLoading">正在加载更多笔记...</div>
       </section>
+
+      <!-- 右侧个人面板：登录状态、数据概览、创作灵感 -->
+      <aside class="profile-panel" aria-label="个人信息">
+        <section class="profile-card">
+          <div class="profile-head">
+            <img id="profileAvatar" alt="">
+            <div>
+              <strong id="profileName">未登录</strong>
+              <span id="profileHint">登录后发布、点赞、评论</span>
+            </div>
+          </div>
+          <div class="profile-stats">
+            <button type="button" id="showMyNotes"><strong id="statNotes">0</strong><span>笔记</span></button>
+            <button type="button"><strong id="statLikes">0</strong><span>获赞</span></button>
+            <button type="button" id="showMyCollections"><strong id="statCollects">0</strong><span>收藏</span></button>
+          </div>
+          <button class="wide-button" id="profileLogin" type="button">手机号登录</button>
+        </section>
+        <section class="profile-card">
+          <div class="panel-title">
+            <h2>趋势榜</h2>
+            <button class="text-button" id="refreshTrends" type="button">刷新</button>
+          </div>
+          <div class="trend-list" id="trendList"></div>
+        </section>
+        <section class="profile-card">
+          <h2>创作灵感</h2>
+          <div class="idea-list">
+            <button data-smart-query="适合一个人吃饭的店">一个人吃饭</button>
+            <button data-smart-query="适合生日聚餐的餐厅">生日聚餐</button>
+            <button data-smart-query="适合下班放松的咖啡店">下班放松</button>
+          </div>
+        </section>
+      </aside>
     </main>
 
+    <!-- 移动端底部主导航 -->
     <nav class="mobile-tabbar" aria-label="移动端导航">
       <button class="is-active" type="button" data-feed="hot">发现</button>
       <button type="button" data-feed="follow">关注</button>
@@ -80,15 +122,17 @@
     </nav>
   </div>
 
+  <!-- 笔记详情层：图片浏览、正文、评论和互动操作 -->
   <div class="detail-drawer" id="detailDrawer" aria-hidden="true">
     <div class="drawer-backdrop" data-close-drawer></div>
     <article class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
       <button class="icon-button drawer-close" type="button" data-close-drawer aria-label="关闭详情">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/>
-        </svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/></svg>
       </button>
-      <div class="drawer-media" id="drawerMedia"></div>
+      <div class="drawer-media">
+        <div class="image-stage" id="drawerMedia"></div>
+        <div class="thumb-row" id="drawerThumbs"></div>
+      </div>
       <div class="drawer-body">
         <div class="author-row">
           <img id="drawerAvatar" alt="">
@@ -101,28 +145,44 @@
         <h1 id="drawerTitle"></h1>
         <div class="drawer-content" id="drawerContent"></div>
         <section class="note-smart" id="noteSmart" hidden>
-          <strong>这篇笔记怎么看</strong>
+          <strong>智能看点</strong>
           <p id="noteSmartText"></p>
         </section>
+        <section class="comment-section">
+          <div class="section-title">
+            <strong>评论</strong>
+            <span id="commentCount">0</span>
+          </div>
+          <div class="comment-list" id="commentList"></div>
+        </section>
         <div class="drawer-actions">
-          <button type="button" id="drawerLike"></button>
+          <form class="comment-form" id="commentForm">
+            <input id="commentInput" placeholder="说点什么...">
+            <button type="submit">发送</button>
+          </form>
+          <button type="button" id="drawerLike">喜欢</button>
           <button type="button" id="drawerCollect">收藏</button>
-          <button type="button" id="drawerAnalyze">智能总结</button>
+          <button type="button" id="drawerAnalyze">总结</button>
         </div>
       </div>
     </article>
   </div>
 
+  <!-- 发布弹窗：图片上传 + 图文笔记表单 -->
   <dialog class="composer-dialog" id="composerDialog">
     <form method="dialog" class="composer-form" id="composerForm">
       <div class="dialog-head">
-        <h2>发布探店笔记</h2>
+        <h2>发布图文笔记</h2>
         <button class="icon-button" value="cancel" aria-label="关闭发布弹窗">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/>
-          </svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/></svg>
         </button>
       </div>
+      <label class="upload-box" for="imageFiles">
+        <input id="imageFiles" name="files" type="file" accept="image/*" multiple>
+        <span>上传图片</span>
+        <small>支持多张图片，发布前会自动上传</small>
+      </label>
+      <div class="preview-grid" id="uploadPreview"></div>
       <label>
         标题
         <input name="title" maxlength="80" required placeholder="比如：人均 30 的宝藏茶餐厅">
@@ -143,6 +203,31 @@
         <button class="ghost-button" value="cancel">取消</button>
         <button class="publish-button" value="default">发布</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- 登录弹窗：本地调试使用验证码登录 -->
+  <dialog class="login-dialog" id="loginDialog">
+    <form method="dialog" class="login-form" id="loginForm">
+      <div class="dialog-head">
+        <h2>手机号登录</h2>
+        <button class="icon-button" value="cancel" aria-label="关闭登录弹窗">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/></svg>
+        </button>
+      </div>
+      <label>
+        手机号
+        <input name="phone" required placeholder="请输入手机号">
+      </label>
+      <div class="code-row">
+        <label>
+          验证码
+          <input name="code" required placeholder="6 位验证码">
+        </label>
+        <button class="ghost-button" id="sendCodeButton" type="button">获取验证码</button>
+      </div>
+      <p class="login-tip">验证码会输出在后端日志里，适合本地调试。</p>
+      <button class="wide-button" value="default">登录</button>
     </form>
   </dialog>
 

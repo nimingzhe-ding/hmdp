@@ -66,6 +66,46 @@ CREATE TABLE `tb_blog_comments`  (
 -- ----------------------------
 
 -- ----------------------------
+-- Table structure for tb_blog_collect
+-- ----------------------------
+DROP TABLE IF EXISTS `tb_blog_collect`;
+CREATE TABLE `tb_blog_collect`  (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint(20) UNSIGNED NOT NULL COMMENT '用户id',
+  `blog_id` bigint(20) UNSIGNED NOT NULL COMMENT '笔记id',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_user_blog_collect`(`user_id`, `blog_id`) USING BTREE,
+  INDEX `idx_blog_id`(`blog_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '笔记收藏关系表' ROW_FORMAT = Compact;
+
+-- ----------------------------
+-- Records of tb_blog_collect
+-- ----------------------------
+
+-- ----------------------------
+-- Table structure for tb_note_event
+-- ----------------------------
+DROP TABLE IF EXISTS `tb_note_event`;
+CREATE TABLE `tb_note_event` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint UNSIGNED NULL COMMENT '用户id，未登录为空',
+  `blog_id` bigint UNSIGNED NULL COMMENT '笔记id',
+  `event_type` varchar(32) NOT NULL COMMENT '事件类型：impression/click/search/detail/like/collect/comment',
+  `scene` varchar(64) NULL COMMENT '发生场景：feed/detail/search/ai',
+  `keyword` varchar(128) NULL COMMENT '搜索词或推荐词',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_user_time` (`user_id`, `create_time`) USING BTREE,
+  KEY `idx_blog_event` (`blog_id`, `event_type`) USING BTREE,
+  KEY `idx_event_keyword` (`event_type`, `keyword`, `create_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记行为事件表';
+
+-- ----------------------------
+-- Records of tb_note_event
+-- ----------------------------
+
+-- ----------------------------
 -- Table structure for tb_follow
 -- ----------------------------
 DROP TABLE IF EXISTS `tb_follow`;
