@@ -15,6 +15,9 @@ const state = {
   mallProducts: [],
   videoNotes: [],
   videoObserver: null,
+  danmakuStore: {},
+  danmakuEnabled: JSON.parse(localStorage.getItem("hmdp_danmaku_enabled") || "true"),
+  danmakuSpeed: Number(localStorage.getItem("hmdp_danmaku_speed") || 8.5),
   merchant: null,
   merchantProducts: [],
   merchantOrders: [],
@@ -627,6 +630,7 @@ function renderVideoFeed() {
   els.videoFeed.innerHTML = videos.map(note => `
     <article class="video-slide" data-video-id="${note.id}">
       <video class="immersive-video" src="${normalizeMedia(note.videoUrl)}" poster="${normalizeImage(note.image)}" loop playsinline preload="metadata"></video>
+      <div class="danmaku-layer" data-danmaku-layer="${note.id}"></div>
       <div class="video-gradient"></div>
       <div class="video-info">
         <div class="video-author">
@@ -642,9 +646,20 @@ function renderVideoFeed() {
         <button type="button" data-video-buy="${note.id}"><span>购</span><small>同款</small></button>
         <button type="button" data-video-open="${note.id}"><span>···</span><small>详情</small></button>
       </div>
+      <form class="danmaku-form" data-danmaku-form="${note.id}">
+        <input name="danmaku" maxlength="40" autocomplete="off" placeholder="发条弹幕...">
+        <button type="submit">发送</button>
+      </form>
+      <div class="danmaku-controls">
+        <button type="button" data-danmaku-toggle="${note.id}">${state.danmakuEnabled ? "弹幕开" : "弹幕关"}</button>
+        <label>速度
+          <input type="range" min="5" max="13" step="1" value="${state.danmakuSpeed}" data-danmaku-speed="${note.id}">
+        </label>
+      </div>
     </article>
   `).join("");
   bindVideoFeedEvents(videos);
+  videos.forEach(note => loadDanmaku(note.id));
 }
 
 function bindVideoFeedEvents(videos) {
@@ -656,8 +671,10 @@ function bindVideoFeedEvents(videos) {
       if (entry.isIntersecting && entry.intersectionRatio > 0.62) {
         pauseImmersiveVideos(video);
         video.play().catch(() => {});
+        startDanmakuTicker(entry.target);
       } else {
         video.pause();
+        stopDanmakuTicker(entry.target);
       }
     });
   }, { threshold: [0, 0.62, 1] });
@@ -687,6 +704,119 @@ function bindVideoFeedEvents(videos) {
       switchMall();
     });
   });
+  els.videoFeed.querySelectorAll("[data-danmaku-form]").forEach(form => {
+    form.addEventListener("submit", submitDanmaku);
+  });
+  els.videoFeed.querySelectorAll("[data-danmaku-toggle]").forEach(button => {
+    button.addEventListener("click", () => {
+      state.danmakuEnabled = !state.danmakuEnabled;
+      localStorage.setItem("hmdp_danmaku_enabled", JSON.stringify(state.danmakuEnabled));
+      document.querySelectorAll("[data-danmaku-toggle]").forEach(item => {
+        item.textContent = state.danmakuEnabled ? "弹幕开" : "弹幕关";
+      });
+      document.querySelectorAll(".danmaku-layer").forEach(layer => {
+        layer.hidden = !state.danmakuEnabled;
+      });
+    });
+  });
+  els.videoFeed.querySelectorAll("[data-danmaku-speed]").forEach(input => {
+    input.addEventListener("input", () => {
+      state.danmakuSpeed = Number(input.value);
+      localStorage.setItem("hmdp_danmaku_speed", String(state.danmakuSpeed));
+    });
+  });
+}
+
+function defaultDanmaku(noteId) {
+  return [
+    "这个镜头好有感觉",
+    "求路线",
+    "收藏了，下次去",
+    "这个同款想买",
+    "氛围感拉满"
+  ].map((content, index) => ({ content, videoSecond: index * 3, lane: index % 4 }));
+}
+
+async function loadDanmaku(noteId) {
+  try {
+    const data = await request(`/video-danmaku/${noteId}`);
+    state.danmakuStore[String(noteId)] = Array.isArray(data) && data.length ? data : defaultDanmaku(noteId);
+  } catch {
+    state.danmakuStore[String(noteId)] = defaultDanmaku(noteId);
+  }
+  const layer = els.videoFeed.querySelector(`[data-danmaku-layer="${noteId}"]`);
+  if (layer) layer.hidden = !state.danmakuEnabled;
+}
+
+function renderDanmaku(noteId, currentSecond) {
+  const layer = els.videoFeed.querySelector(`[data-danmaku-layer="${noteId}"]`);
+  if (!layer || !state.danmakuEnabled) return;
+  const list = state.danmakuStore[String(noteId)] || [];
+  list
+    .filter(item => Number(item.videoSecond || 0) === currentSecond && !item.__shownAtSecond)
+    .slice(0, 8)
+    .forEach((item, index) => {
+      item.__shownAtSecond = currentSecond;
+      shootDanmaku(layer, item.content || item.text || item, item.lane ?? index % 5);
+    });
+}
+
+function shootDanmaku(layer, text, lane) {
+  const item = document.createElement("span");
+  item.className = "danmaku-item";
+  item.textContent = text;
+  item.style.setProperty("--lane", String(Math.floor(Math.random() * 5 || lane || 0)));
+  item.style.setProperty("--duration", `${state.danmakuSpeed}s`);
+  layer.appendChild(item);
+  item.addEventListener("animationend", () => item.remove(), { once: true });
+}
+
+async function submitDanmaku(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const noteId = String(form.dataset.danmakuForm);
+  const input = form.elements.danmaku;
+  const text = input.value.trim();
+  if (!text) return;
+  const slide = form.closest(".video-slide");
+  const video = slide?.querySelector("video");
+  const currentSecond = Math.max(0, Math.floor(video?.currentTime || 0));
+  const payload = {
+    blogId: Number(noteId),
+    content: text,
+    videoSecond: currentSecond,
+    lane: Math.floor(Math.random() * 5),
+  };
+  try {
+    const saved = await request("/video-danmaku", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    const list = state.danmakuStore[noteId] || [];
+    list.push(saved || payload);
+    state.danmakuStore[noteId] = list;
+    input.value = "";
+    const layer = els.videoFeed.querySelector(`[data-danmaku-layer="${noteId}"]`);
+    if (layer) shootDanmaku(layer, text, payload.lane);
+  } catch (error) {
+    showStatus(error.message || "弹幕发送失败。");
+  }
+}
+
+function startDanmakuTicker(slide) {
+  if (slide.dataset.danmakuTimer) return;
+  const timer = window.setInterval(() => {
+    const video = slide.querySelector("video");
+    if (!video || video.paused) return;
+    renderDanmaku(slide.dataset.videoId, Math.floor(video.currentTime || 0));
+  }, 500);
+  slide.dataset.danmakuTimer = String(timer);
+}
+
+function stopDanmakuTicker(slide) {
+  if (!slide.dataset.danmakuTimer) return;
+  window.clearInterval(Number(slide.dataset.danmakuTimer));
+  delete slide.dataset.danmakuTimer;
 }
 
 function playCurrentImmersiveVideo() {
@@ -697,6 +827,9 @@ function playCurrentImmersiveVideo() {
 function pauseImmersiveVideos(except) {
   document.querySelectorAll(".immersive-video").forEach(video => {
     if (video !== except) video.pause();
+  });
+  document.querySelectorAll(".video-slide").forEach(slide => {
+    if (slide.querySelector("video") !== except) stopDanmakuTicker(slide);
   });
 }
 

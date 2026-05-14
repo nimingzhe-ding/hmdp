@@ -337,6 +337,41 @@ img {
   pointer-events: none;
 }
 
+.danmaku-layer {
+  position: absolute;
+  inset: 54px 72px auto 0;
+  z-index: 1;
+  height: 178px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.danmaku-item {
+  position: absolute;
+  top: calc(var(--lane) * 34px);
+  left: 100%;
+  max-width: 78%;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .36);
+  color: #fff;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+  white-space: nowrap;
+  animation: danmaku-move var(--duration, 8.5s) linear forwards;
+  backdrop-filter: blur(8px);
+}
+
+@keyframes danmaku-move {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100vw - 100%));
+  }
+}
+
 .video-info {
   position: absolute;
   right: 86px;
@@ -418,6 +453,80 @@ img {
   padding: 28px;
   color: rgba(255, 255, 255, .72);
   text-align: center;
+}
+
+.danmaku-form {
+  position: absolute;
+  right: 86px;
+  bottom: 164px;
+  left: 22px;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.danmaku-form input {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .38);
+  color: #fff;
+  outline: 0;
+  padding: 0 14px;
+  backdrop-filter: blur(12px);
+}
+
+.danmaku-form input::placeholder {
+  color: rgba(255, 255, 255, .68);
+}
+
+.danmaku-form button {
+  min-width: 58px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 900;
+}
+
+.danmaku-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .34);
+  color: #fff;
+  padding: 7px 9px;
+  backdrop-filter: blur(12px);
+}
+
+.danmaku-controls button {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .18);
+  color: #fff;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.danmaku-controls label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.danmaku-controls input {
+  width: 74px;
+  accent-color: var(--accent);
 }
 
 /* Mall home, product cards, and commerce dialogs */
@@ -1988,6 +2097,23 @@ dialog::backdrop {
   .video-actions {
     right: 12px;
     bottom: 22px;
+  }
+
+  .danmaku-layer {
+    inset: 44px 60px auto 0;
+    height: 150px;
+  }
+
+  .danmaku-form {
+    right: 76px;
+    bottom: 150px;
+    left: 16px;
+  }
+
+  .danmaku-controls {
+    right: 8px;
+    left: 8px;
+    justify-content: space-between;
   }
 
   .mall-head {

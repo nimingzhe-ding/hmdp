@@ -86,6 +86,20 @@ ALTER TABLE `tb_voucher`
 ALTER TABLE `tb_blog`
   ADD COLUMN IF NOT EXISTS `video_url` varchar(1024) NULL COMMENT '视频笔记地址' AFTER `images`;
 
+CREATE TABLE IF NOT EXISTS `tb_video_danmaku` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `blog_id` bigint UNSIGNED NOT NULL COMMENT '视频笔记id',
+  `user_id` bigint UNSIGNED NULL COMMENT '发送用户id，对外匿名',
+  `content` varchar(80) NOT NULL COMMENT '弹幕内容',
+  `video_second` int NOT NULL DEFAULT 0 COMMENT '视频播放秒数',
+  `lane` int NULL COMMENT '弹幕轨道',
+  `status` bit(1) NOT NULL DEFAULT b'0' COMMENT '状态：0正常，1隐藏',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_blog_second` (`blog_id`, `video_second`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='视频弹幕表';
+
 INSERT INTO `tb_merchant`
 (`id`, `user_id`, `name`, `avatar`, `description`, `phone`, `address`, `status`, `audit_status`)
 SELECT 1, 1, '探店优选旗舰店',
