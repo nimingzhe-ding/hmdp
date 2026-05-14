@@ -1,5 +1,6 @@
 package com.hmdp.service;
 
+import com.hmdp.dto.ContentAiRequest;
 import com.hmdp.dto.Result;
 
 /**
@@ -47,4 +48,14 @@ public interface IContentService {
      * 查询搜索和内容趋势词。
      */
     Result trends();
+
+    /**
+     * 生成内容搜索场景下的智能推荐。
+     */
+    Result aiRecommend(ContentAiRequest request);
+
+    /**
+     * 生成笔记详情场景下的智能看点总结。
+     */
+    Result aiNoteSummary(ContentAiRequest request);
 }

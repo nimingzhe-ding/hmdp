@@ -12,7 +12,9 @@ const state = {
   category: "all",
   currentNote: null,
   currentUser: null,
+  replyTarget: null,
   trends: [],
+  wallet: new Set(JSON.parse(localStorage.getItem("hmdp_wallet") || "[]")),
   collected: new Set(JSON.parse(localStorage.getItem("hmdp_collected") || "[]")),
   followed: new Set(JSON.parse(localStorage.getItem("hmdp_followed") || "[]")),
   aiSessionId: localStorage.getItem("hmdp_ai_session") || crypto.randomUUID()
@@ -36,6 +38,8 @@ const els = {
   drawerMedia: document.querySelector("#drawerMedia"),
   drawerThumbs: document.querySelector("#drawerThumbs"),
   composer: document.querySelector("#composerDialog"),
+  shopDialog: document.querySelector("#shopDialog"),
+  voucherList: document.querySelector("#voucherList"),
   composerForm: document.querySelector("#composerForm"),
   imageFiles: document.querySelector("#imageFiles"),
   uploadPreview: document.querySelector("#uploadPreview"),
@@ -45,6 +49,7 @@ const els = {
   smartText: document.querySelector("#smartText"),
   noteSmart: document.querySelector("#noteSmart"),
   noteSmartText: document.querySelector("#noteSmartText"),
+  shopBridge: document.querySelector("#shopBridge"),
   commentForm: document.querySelector("#commentForm"),
   commentInput: document.querySelector("#commentInput"),
   commentList: document.querySelector("#commentList"),
@@ -387,6 +392,7 @@ async function openDrawer(note) {
     // 详情聚合接口不可用时继续展示卡片已有数据。
   }
   state.currentNote = note;
+  state.replyTarget = null;
   els.noteSmart.hidden = true;
   els.noteSmartText.textContent = "";
   renderDrawerImages(note);
@@ -395,6 +401,7 @@ async function openDrawer(note) {
   document.querySelector("#drawerTime").textContent = formatTime(note.createTime);
   document.querySelector("#drawerTitle").textContent = note.title;
   document.querySelector("#drawerContent").textContent = note.content || "这个作者还没有填写更多内容。";
+  renderShopBridge(note.shop);
   document.querySelector("#drawerLike").textContent = `♥ ${note.liked}`;
   document.querySelector("#drawerCollect").textContent = state.collected.has(String(note.id)) ? "★ 已收藏" : "☆ 收藏";
   document.querySelector("#drawerFollow").textContent = state.followed.has(String(note.userId)) ? "已关注" : "关注";
@@ -412,6 +419,104 @@ async function openDrawer(note) {
   trackEvent("detail", { blogId: note.id, scene: "detail" });
   loadCollectState(note);
   loadComments(note.id);
+}
+
+function renderShopBridge(shop) {
+  if (!shop) {
+    els.shopBridge.hidden = true;
+    return;
+  }
+  const image = String(shop.images || "").split(",").map(item => item.trim()).filter(Boolean)[0] || fallbackNotes[0].images;
+  document.querySelector("#shopImage").src = normalizeImage(image);
+  document.querySelector("#shopName").textContent = shop.name || "关联店铺";
+  const score = shop.score ? `${(shop.score / 10).toFixed(1)}分` : "暂无评分";
+  const price = shop.avgPrice ? `人均 ¥${shop.avgPrice}` : "价格待补充";
+  document.querySelector("#shopMeta").textContent = `${score} · ${price} · ${shop.area || "本地生活"}`;
+  document.querySelector("#shopAddress").textContent = shop.address || shop.openHours || "";
+  const hasVoucher = Boolean(shop.voucherId);
+  document.querySelector("#shopOffer").hidden = !hasVoucher;
+  if (hasVoucher) {
+    document.querySelector("#voucherTitle").textContent = shop.voucherTitle || "店铺优惠";
+    document.querySelector("#voucherSubTitle").textContent = shop.voucherSubTitle || "到店前先看看优惠";
+    document.querySelector("#voucherAction").onclick = () => openShopDialog(shop);
+  }
+  els.shopBridge.hidden = false;
+}
+
+async function openShopDialog(shop) {
+  if (!shop?.id) return;
+  document.querySelector("#shopDialogName").textContent = shop.name || "店铺详情";
+  document.querySelector("#shopDialogImage").src = normalizeImage(String(shop.images || "").split(",")[0] || fallbackNotes[0].images);
+  const score = shop.score ? `${(shop.score / 10).toFixed(1)}分` : "暂无评分";
+  const price = shop.avgPrice ? `人均 ¥${shop.avgPrice}` : "价格待补充";
+  document.querySelector("#shopDialogMeta").textContent = `${score} · ${price} · ${shop.area || "本地生活"}`;
+  document.querySelector("#shopDialogAddress").textContent = shop.address || "";
+  document.querySelector("#shopDialogHours").textContent = shop.openHours ? `营业时间 ${shop.openHours}` : "";
+  els.voucherList.innerHTML = `<p class="empty-text">正在加载优惠...</p>`;
+  els.shopDialog.showModal();
+  try {
+    const vouchers = await request(`/voucher/list/${shop.id}`);
+    renderVouchers(Array.isArray(vouchers) ? vouchers : []);
+  } catch {
+    renderVouchers([]);
+  }
+}
+
+function renderVouchers(vouchers) {
+  if (!vouchers.length) {
+    els.voucherList.innerHTML = `<p class="empty-text">这家店暂时没有可用优惠。</p>`;
+    return;
+  }
+  els.voucherList.innerHTML = vouchers.map(voucher => {
+    const pay = voucher.payValue ? `¥${formatMoney(voucher.payValue)}` : "到店优惠";
+    const actual = voucher.actualValue ? `抵 ¥${formatMoney(voucher.actualValue)}` : "查看规则";
+    const isSeckill = Number(voucher.type) === 1;
+    const owned = state.wallet.has(String(voucher.id));
+    const actionText = isSeckill ? "抢购" : (owned ? "已领取" : "领取");
+    return `
+      <article class="voucher-item">
+        <div>
+          <strong>${escapeHtml(voucher.title || "店铺优惠券")}</strong>
+          <span>${escapeHtml(voucher.subTitle || voucher.rules || "到店前先看看优惠")}</span>
+        </div>
+        <button type="button" data-voucher-id="${voucher.id}" data-voucher-type="${voucher.type || 0}" ${owned && !isSeckill ? "disabled" : ""}>
+          ${actionText}<small>${pay} · ${actual}</small>
+        </button>
+      </article>
+    `;
+  }).join("");
+  els.voucherList.querySelectorAll("button").forEach(button => {
+    button.addEventListener("click", () => handleVoucherAction(button));
+  });
+}
+
+async function handleVoucherAction(button) {
+  if (!requireLogin()) return;
+  const voucherId = button.dataset.voucherId;
+  const isSeckill = Number(button.dataset.voucherType) === 1;
+  button.disabled = true;
+  const previous = button.firstChild.textContent;
+  button.firstChild.textContent = isSeckill ? "抢购中" : "领取中";
+  try {
+    if (isSeckill) {
+      const orderId = await request(`/voucher-order/seckill/${voucherId}`, { method: "POST" });
+      showStatus(`抢购成功，订单号：${orderId}`);
+    } else {
+      state.wallet.add(String(voucherId));
+      localStorage.setItem("hmdp_wallet", JSON.stringify([...state.wallet]));
+      button.firstChild.textContent = "已领取";
+      showStatus("优惠券已放入本地卡包，后续可接入正式券包表。");
+    }
+  } catch (error) {
+    button.disabled = false;
+    button.firstChild.textContent = previous;
+    showStatus(isSeckill ? "抢购失败，请确认库存和登录状态。" : "领取失败，请稍后再试。");
+  }
+}
+
+function formatMoney(value) {
+  const number = Number(value || 0);
+  return Number.isInteger(number / 100) ? String(number / 100) : (number / 100).toFixed(2);
 }
 
 function renderDrawerImages(note) {
@@ -437,6 +542,8 @@ function closeDrawer() {
   els.drawer.classList.remove("is-open");
   els.drawer.setAttribute("aria-hidden", "true");
   document.body.style.overflow = "";
+  state.replyTarget = null;
+  els.commentInput.placeholder = "说点什么...";
 }
 
 // ------------------------------
@@ -527,13 +634,51 @@ function renderComments(comments) {
       <div>
         <strong>${escapeHtml(comment.name || "探店用户")}</strong>
         <p>${escapeHtml(comment.content)}</p>
-        <span>${formatTime(comment.createTime)} · <button class="comment-like" type="button" data-comment-id="${comment.id}">♡ ${comment.liked || 0}</button></span>
+        <span>
+          ${formatTime(comment.createTime)} ·
+          <button class="comment-like" type="button" data-comment-id="${comment.id}">♡ ${comment.liked || 0}</button>
+          · <button class="comment-reply" type="button" data-comment-id="${comment.id}" data-parent-id="${comment.id}" data-name="${escapeHtml(comment.name || "探店用户")}">回复</button>
+        </span>
+        ${renderReplies(comment.replies || [], comment.id)}
       </div>
     </article>
   `).join("");
   els.commentList.querySelectorAll(".comment-like").forEach(button => {
     button.addEventListener("click", () => likeComment(button.dataset.commentId));
   });
+  els.commentList.querySelectorAll(".comment-reply").forEach(button => {
+    button.addEventListener("click", () => startReply(button));
+  });
+}
+
+function renderReplies(replies, rootId) {
+  if (!replies.length) return "";
+  return `
+    <div class="reply-list">
+      ${replies.map(reply => `
+        <article class="reply-item">
+          <strong>${escapeHtml(reply.name || "探店用户")}</strong>
+          <p>${escapeHtml(reply.content)}</p>
+          <span>
+            ${formatTime(reply.createTime)} ·
+            <button class="comment-like" type="button" data-comment-id="${reply.id}">♡ ${reply.liked || 0}</button>
+            · <button class="comment-reply" type="button" data-comment-id="${reply.id}" data-parent-id="${rootId}" data-name="${escapeHtml(reply.name || "探店用户")}">回复</button>
+          </span>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function startReply(button) {
+  if (!requireLogin()) return;
+  state.replyTarget = {
+    parentId: Number(button.dataset.parentId),
+    answerId: Number(button.dataset.commentId),
+    name: button.dataset.name
+  };
+  els.commentInput.placeholder = `回复 ${state.replyTarget.name}`;
+  els.commentInput.focus();
 }
 
 async function likeComment(commentId) {
@@ -552,12 +697,20 @@ async function submitComment(event) {
   const content = els.commentInput.value.trim();
   if (!content) return;
   try {
+    const payload = {
+      blogId: state.currentNote.id,
+      content,
+      parentId: state.replyTarget?.parentId || 0,
+      answerId: state.replyTarget?.answerId || 0
+    };
     await request("/blog-comments", {
       method: "POST",
-      body: JSON.stringify({ blogId: state.currentNote.id, content })
+      body: JSON.stringify(payload)
     });
     trackEvent("comment", { blogId: state.currentNote.id, scene: "detail" });
+    state.replyTarget = null;
     els.commentInput.value = "";
+    els.commentInput.placeholder = "说点什么...";
     loadComments(state.currentNote.id);
   } catch {
     showStatus("评论失败，请确认已登录。");
@@ -584,16 +737,16 @@ async function loadSmartRecommendation(question) {
   els.smartCard.hidden = false;
   els.smartText.textContent = "正在结合店铺、优惠券和笔记内容生成推荐...";
   try {
-    const data = await request("/ai/query/chat", {
+    const data = await request("/content/ai/recommend", {
       method: "POST",
       body: JSON.stringify({
         sessionId: state.aiSessionId,
-        message: `用户正在内容流搜索「${question}」。请给出简短探店推荐，优先结合系统里的店铺、优惠券和笔记信息。`
+        query: question
       })
     });
     els.smartText.textContent = data.answer || data.content || "暂时没有生成有效推荐。";
   } catch {
-    els.smartText.textContent = `可以先看看「${question}」相关笔记。AI 推荐需要配置 DASHSCOPE_API_KEY，并保证后端 /ai/query/chat 可用。`;
+    els.smartText.textContent = `先看看「${question}」相关笔记。智能推荐暂时不可用，但不影响正常浏览。`;
   }
 }
 
@@ -601,16 +754,18 @@ async function analyzeCurrentNote(note) {
   els.noteSmart.hidden = false;
   els.noteSmartText.textContent = "正在总结这篇笔记的适合人群、亮点和注意事项...";
   try {
-    const data = await request("/ai/query/chat", {
+    const data = await request("/content/ai/note-summary", {
       method: "POST",
       body: JSON.stringify({
         sessionId: state.aiSessionId,
-        message: `请用三句话总结这篇探店笔记适合谁、亮点是什么、需要注意什么。标题：${note.title}。正文：${note.content}`
+        noteId: note.id,
+        title: note.title,
+        content: note.content
       })
     });
     els.noteSmartText.textContent = data.answer || data.content || "暂时没有生成有效总结。";
   } catch {
-    els.noteSmartText.textContent = "AI 总结暂时不可用。请检查 DASHSCOPE_API_KEY 和 /ai/query/chat 接口。";
+    els.noteSmartText.textContent = "智能看点暂时不可用，正文内容仍可正常查看。";
   }
 }
 
@@ -630,6 +785,14 @@ function switchPersonalMode(mode) {
   els.search.value = "";
   document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
   resetAndLoad();
+}
+
+function showWallet() {
+  if (!requireLogin()) return;
+  const vouchers = [...state.wallet];
+  showStatus(vouchers.length
+    ? `我的券包：${vouchers.map(id => `券 #${id}`).join("、")}`
+    : "券包还是空的，去笔记详情里的店铺卡片领取一张试试。");
 }
 
 // ------------------------------
@@ -657,11 +820,20 @@ async function submitComposer(event) {
   try {
     const uploaded = await uploadSelectedImages();
     const manualImages = String(form.get("images") || "").trim();
+    const content = String(form.get("content") || "").trim();
+    if (!uploaded.length && !manualImages) {
+      showStatus("发布笔记至少需要一张图片。");
+      return;
+    }
+    if (content.length < 12) {
+      showStatus("正文再多写一点，会更像一篇有价值的探店笔记。");
+      return;
+    }
     const payload = {
       title: form.get("title"),
       images: uploaded.length ? uploaded.join(",") : manualImages,
       shopId: form.get("shopId") ? Number(form.get("shopId")) : null,
-      content: form.get("content")
+      content: mergeTopics(content, form.get("topics"))
     };
     await request("/blog", { method: "POST", body: JSON.stringify(payload) });
     els.composer.close();
@@ -674,6 +846,12 @@ async function submitComposer(event) {
     submitButton.disabled = false;
     submitButton.textContent = "发布";
   }
+}
+
+function mergeTopics(content, topics) {
+  const body = String(content || "").trim();
+  const topicText = String(topics || "").trim();
+  return topicText ? `${body}\n\n${topicText}` : body;
 }
 
 // ------------------------------
@@ -834,6 +1012,7 @@ document.querySelectorAll("[data-close-drawer]").forEach(item => item.addEventLi
 document.querySelector("#openComposer").addEventListener("click", () => requireLogin() && els.composer.showModal());
 document.querySelector("#railPublish").addEventListener("click", () => requireLogin() && els.composer.showModal());
 document.querySelector("#mobilePublish").addEventListener("click", () => requireLogin() && els.composer.showModal());
+document.querySelector("#closeShopDialog").addEventListener("click", () => els.shopDialog.close());
 document.querySelector("#loginButton").addEventListener("click", () => els.loginDialog.showModal());
 document.querySelector("#profileLogin").addEventListener("click", () => {
   if (token()) {
@@ -848,6 +1027,8 @@ document.querySelector("#profileLogin").addEventListener("click", () => {
 });
 document.querySelector("#showMyNotes").addEventListener("click", () => switchPersonalMode("mine"));
 document.querySelector("#showMyCollections").addEventListener("click", () => switchPersonalMode("collections"));
+document.querySelector("#showDiscover").addEventListener("click", () => switchFeed("hot"));
+document.querySelector("#showWallet").addEventListener("click", showWallet);
 document.querySelector("#refreshTrends").addEventListener("click", loadTrends);
 document.querySelector("#sendCodeButton").addEventListener("click", sendCode);
 els.composerForm.addEventListener("submit", submitComposer);
@@ -855,7 +1036,14 @@ els.loginForm.addEventListener("submit", submitLogin);
 els.commentForm.addEventListener("submit", submitComment);
 
 window.addEventListener("keydown", event => {
-  if (event.key === "Escape") closeDrawer();
+  if (event.key === "Escape") {
+    if (state.replyTarget) {
+      state.replyTarget = null;
+      els.commentInput.placeholder = "说点什么...";
+      return;
+    }
+    closeDrawer();
+  }
 });
 
 window.addEventListener("scroll", () => {

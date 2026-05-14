@@ -25,4 +25,5 @@ public class ContentNoteDTO {
     private Boolean isCollect;
     private Boolean isFollow;
     private LocalDateTime createTime;
+    private ContentShopDTO shop;
 }

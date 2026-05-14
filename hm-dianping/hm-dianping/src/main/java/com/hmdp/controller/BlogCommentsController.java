@@ -24,6 +24,10 @@ import jakarta.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * <p>
@@ -60,20 +64,34 @@ public class BlogCommentsController {
                 .orderByDesc("liked")
                 .orderByDesc("create_time")
                 .page(new Page<>(current, 20));
-        List<Map<String, Object>> records = page.getRecords().stream()
-                .map(comment -> {
-                    User user = userService.getById(comment.getUserId());
-                    return Map.<String, Object>of(
-                            "id", comment.getId(),
-                            "blogId", comment.getBlogId(),
-                            "userId", comment.getUserId(),
-                            "name", user == null ? "探店用户" : user.getNickName(),
-                            "icon", user == null ? "" : Objects.toString(user.getIcon(), ""),
-                            "content", comment.getContent(),
-                            "liked", comment.getLiked() == null ? 0 : comment.getLiked(),
-                            "createTime", comment.getCreateTime()
-                    );
-                })
+        List<BlogComments> comments = page.getRecords();
+        List<Long> parentIds = comments.stream()
+                .map(BlogComments::getId)
+                .toList();
+        List<BlogComments> replies = parentIds.isEmpty()
+                ? List.of()
+                : commentsService.query()
+                .eq("blog_id", blogId)
+                .in("parent_id", parentIds)
+                .orderByAsc("create_time")
+                .list();
+        List<BlogComments> allComments = new ArrayList<>();
+        allComments.addAll(comments);
+        allComments.addAll(replies);
+        List<Long> userIds = allComments.stream()
+                .map(BlogComments::getUserId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        Map<Long, User> userMap = userIds.isEmpty()
+                ? Map.of()
+                : userService.listByIds(userIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity(), (first, second) -> first));
+        Map<Long, List<Map<String, Object>>> replyMap = replies.stream()
+                .map(reply -> toCommentMap(reply, userMap, List.of()))
+                .collect(Collectors.groupingBy(reply -> (Long) reply.get("parentId"), LinkedHashMap::new, Collectors.toList()));
+        List<Map<String, Object>> records = comments.stream()
+                .map(comment -> toCommentMap(comment, userMap, replyMap.getOrDefault(comment.getId(), List.of())))
                 .toList();
         return Result.ok(records, page.getTotal());
     }
@@ -96,8 +114,16 @@ public class BlogCommentsController {
         }
         comment.setId(null);
         comment.setUserId(user.getId());
-        comment.setParentId(0L);
-        comment.setAnswerId(0L);
+        Long parentId = comment.getParentId() == null ? 0L : comment.getParentId();
+        Long answerId = comment.getAnswerId() == null ? parentId : comment.getAnswerId();
+        if (parentId > 0) {
+            BlogComments parentComment = commentsService.getById(parentId);
+            if (parentComment == null || !comment.getBlogId().equals(parentComment.getBlogId())) {
+                return Result.fail("回复的评论不存在");
+            }
+        }
+        comment.setParentId(parentId);
+        comment.setAnswerId(answerId);
         comment.setLiked(0);
         comment.setStatus(false);
         commentsService.save(comment);
@@ -106,6 +132,23 @@ public class BlogCommentsController {
                 .eq("id", comment.getBlogId())
                 .update();
         return Result.ok(comment.getId());
+    }
+
+    private Map<String, Object> toCommentMap(BlogComments comment, Map<Long, User> userMap, List<Map<String, Object>> replies) {
+        User user = userMap.get(comment.getUserId());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", comment.getId());
+        result.put("blogId", comment.getBlogId());
+        result.put("userId", comment.getUserId());
+        result.put("parentId", comment.getParentId());
+        result.put("answerId", comment.getAnswerId());
+        result.put("name", user == null ? "探店用户" : user.getNickName());
+        result.put("icon", user == null ? "" : Objects.toString(user.getIcon(), ""));
+        result.put("content", comment.getContent());
+        result.put("liked", comment.getLiked() == null ? 0 : comment.getLiked());
+        result.put("createTime", comment.getCreateTime());
+        result.put("replies", replies);
+        return result;
     }
 
     /**

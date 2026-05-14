@@ -1,9 +1,12 @@
 package com.hmdp.controller;
 
+import com.hmdp.dto.ContentAiRequest;
 import com.hmdp.dto.Result;
 import com.hmdp.service.IContentService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -64,5 +67,15 @@ public class ContentController {
     @GetMapping("/trends")
     public Result trends() {
         return contentService.trends();
+    }
+
+    @PostMapping("/ai/recommend")
+    public Result aiRecommend(@RequestBody ContentAiRequest request) {
+        return contentService.aiRecommend(request);
+    }
+
+    @PostMapping("/ai/note-summary")
+    public Result aiNoteSummary(@RequestBody ContentAiRequest request) {
+        return contentService.aiNoteSummary(request);
     }
 }

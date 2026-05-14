@@ -1,23 +1,32 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hmdp.ai.dto.AiChatRequest;
+import com.hmdp.ai.service.AiAssistantService;
+import com.hmdp.dto.ContentAiRequest;
 import com.hmdp.dto.ContentFeedResult;
 import com.hmdp.dto.ContentNoteDTO;
 import com.hmdp.dto.ContentProfileDTO;
+import com.hmdp.dto.ContentShopDTO;
 import com.hmdp.dto.ContentTrendDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogCollect;
 import com.hmdp.entity.NoteEvent;
+import com.hmdp.entity.Shop;
 import com.hmdp.entity.User;
+import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.NoteEventMapper;
 import com.hmdp.service.IBlogCollectService;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IContentService;
 import com.hmdp.service.IFollowService;
+import com.hmdp.service.IShopService;
 import com.hmdp.service.IUserService;
+import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -25,9 +34,13 @@ import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 内容社区聚合服务实现。
@@ -44,6 +57,12 @@ public class ContentServiceImpl implements IContentService {
     private IUserService userService;
 
     @Resource
+    private IShopService shopService;
+
+    @Resource
+    private IVoucherService voucherService;
+
+    @Resource
     private IFollowService followService;
 
     @Resource
@@ -54,6 +73,9 @@ public class ContentServiceImpl implements IContentService {
 
     @Resource
     private NoteEventMapper noteEventMapper;
+
+    @Resource
+    private AiAssistantService aiAssistantService;
 
     @Override
     public Result feed(String channel, String query, Integer current) {
@@ -188,6 +210,37 @@ public class ContentServiceImpl implements IContentService {
         return Result.ok(trends);
     }
 
+    @Override
+    public Result aiRecommend(ContentAiRequest request) {
+        String query = request == null ? "" : StrUtil.trim(request.getQuery());
+        if (StrUtil.isBlank(query)) {
+            return Result.fail("推荐问题不能为空");
+        }
+        AiChatRequest aiRequest = toAiChatRequest(request, buildRecommendPrompt(query));
+        return safeAiQuery(aiRequest, "可以先看看「" + query + "」相关笔记，按热度和收藏数挑选更稳。");
+    }
+
+    @Override
+    public Result aiNoteSummary(ContentAiRequest request) {
+        if (request == null) {
+            return Result.fail("笔记内容不能为空");
+        }
+        String title = StrUtil.blankToDefault(StrUtil.trim(request.getTitle()), "未命名笔记");
+        String content = StrUtil.trim(request.getContent());
+        if (StrUtil.isBlank(content) && request.getNoteId() != null) {
+            Blog blog = blogService.getById(request.getNoteId());
+            if (blog != null) {
+                title = StrUtil.blankToDefault(blog.getTitle(), title);
+                content = blog.getContent();
+            }
+        }
+        if (StrUtil.isBlank(content)) {
+            return Result.fail("笔记内容不能为空");
+        }
+        AiChatRequest aiRequest = toAiChatRequest(request, buildNoteSummaryPrompt(title, content));
+        return safeAiQuery(aiRequest, "这篇笔记可以重点看标题、图片和评论反馈；智能看点暂时不可用。");
+    }
+
     /**
      * 构造内容流查询条件。
      * hot 使用互动热度 + 新鲜度排序；follow 只看关注作者；nearby 先复用内容搜索，
@@ -227,9 +280,7 @@ public class ContentServiceImpl implements IContentService {
     }
 
     private ContentFeedResult toFeedResult(Page<Blog> page, String query) {
-        List<ContentNoteDTO> list = page.getRecords().stream()
-                .map(this::toNoteDTO)
-                .toList();
+        List<ContentNoteDTO> list = toNoteDTOs(page.getRecords());
         boolean hasMore = page.getCurrent() < page.getPages();
         return new ContentFeedResult(list, page.getTotal(), hasMore, query);
     }
@@ -251,14 +302,14 @@ public class ContentServiceImpl implements IContentService {
         for (Blog blog : blogs) {
             blogMap.put(blog.getId(), blog);
         }
-        List<ContentNoteDTO> notes = new ArrayList<>();
+        List<Blog> orderedBlogs = new ArrayList<>();
         for (Long blogId : blogIds) {
             Blog blog = blogMap.get(blogId);
             if (blog != null) {
-                notes.add(toNoteDTO(blog));
+                orderedBlogs.add(blog);
             }
         }
-        return notes;
+        return toNoteDTOs(orderedBlogs);
     }
 
     /**
@@ -266,6 +317,46 @@ public class ContentServiceImpl implements IContentService {
      * 这里统一补齐作者信息、点赞/收藏/关注状态、互动计数，避免前端为每张卡片多次请求。
      */
     private ContentNoteDTO toNoteDTO(Blog blog) {
+        return toNoteDTOs(List.of(blog)).get(0);
+    }
+
+    /**
+     * 批量组装前端内容卡片字段。
+     * 内容流一次通常返回多篇笔记，批量查询作者、收藏数、收藏状态和关注状态，
+     * 避免每张卡片都单独访问数据库造成 N+1 查询。
+     */
+    private List<ContentNoteDTO> toNoteDTOs(List<Blog> blogs) {
+        if (blogs == null || blogs.isEmpty()) {
+            return List.of();
+        }
+        List<Long> blogIds = blogs.stream()
+                .map(Blog::getId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        List<Long> authorIds = blogs.stream()
+                .map(Blog::getUserId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        Map<Long, User> authorMap = loadAuthors(authorIds);
+        Map<Long, Long> collectCountMap = loadCollectCounts(blogIds);
+        UserDTO currentUser = UserHolder.getUser();
+        Set<Long> collectedBlogIds = loadCollectedBlogIds(currentUser, blogIds);
+        Set<Long> followedAuthorIds = loadFollowedAuthorIds(currentUser, authorIds);
+
+        return blogs.stream()
+                .map(blog -> toNoteDTO(blog, authorMap, collectCountMap, collectedBlogIds, followedAuthorIds, currentUser))
+                .toList();
+    }
+
+    private ContentNoteDTO toNoteDTO(
+            Blog blog,
+            Map<Long, User> authorMap,
+            Map<Long, Long> collectCountMap,
+            Set<Long> collectedBlogIds,
+            Set<Long> followedAuthorIds,
+            UserDTO currentUser) {
         ContentNoteDTO dto = new ContentNoteDTO();
         dto.setId(blog.getId());
         dto.setShopId(blog.getShopId());
@@ -276,12 +367,12 @@ public class ContentServiceImpl implements IContentService {
         dto.setLiked(blog.getLiked() == null ? 0 : blog.getLiked());
         dto.setComments(blog.getComments() == null ? 0 : blog.getComments());
         dto.setCreateTime(blog.getCreateTime());
+        dto.setShop(buildShopDTO(blog.getShopId()));
 
-        User author = userService.getById(blog.getUserId());
+        User author = authorMap.get(blog.getUserId());
         dto.setName(author == null ? "探店用户" : author.getNickName());
         dto.setIcon(author == null ? "" : author.getIcon());
 
-        UserDTO currentUser = UserHolder.getUser();
         if (currentUser == null) {
             dto.setIsLike(false);
             dto.setIsCollect(false);
@@ -289,14 +380,100 @@ public class ContentServiceImpl implements IContentService {
         } else {
             String likedKey = "blog:liked:" + blog.getId();
             dto.setIsLike(stringRedisTemplate.opsForZSet().score(likedKey, currentUser.getId().toString()) != null);
-            dto.setIsCollect(Boolean.TRUE.equals(blogCollectService.isCollected(blog.getId()).getData()));
-            dto.setIsFollow(blog.getUserId() != null && followService.query()
-                    .eq("user_id", currentUser.getId())
-                    .eq("follow_user_id", blog.getUserId())
-                    .count() > 0);
+            dto.setIsCollect(collectedBlogIds.contains(blog.getId()));
+            dto.setIsFollow(blog.getUserId() != null && followedAuthorIds.contains(blog.getUserId()));
         }
-        dto.setCollects(blogCollectService.query().eq("blog_id", blog.getId()).count());
+        dto.setCollects(collectCountMap.getOrDefault(blog.getId(), 0L));
         return dto;
+    }
+
+    private ContentShopDTO buildShopDTO(Long shopId) {
+        if (shopId == null) {
+            return null;
+        }
+        Shop shop = shopService.getById(shopId);
+        if (shop == null) {
+            return null;
+        }
+        ContentShopDTO dto = new ContentShopDTO();
+        dto.setId(shop.getId());
+        dto.setName(shop.getName());
+        dto.setImages(shop.getImages());
+        dto.setArea(shop.getArea());
+        dto.setAddress(shop.getAddress());
+        dto.setAvgPrice(shop.getAvgPrice());
+        dto.setSold(shop.getSold());
+        dto.setComments(shop.getComments());
+        dto.setScore(shop.getScore());
+        dto.setOpenHours(shop.getOpenHours());
+
+        // 选一个当前店铺可用的优惠券，让笔记详情自然承接到交易转化。
+        Voucher voucher = voucherService.query()
+                .eq("shop_id", shopId)
+                .eq("status", 1)
+                .orderByAsc("pay_value")
+                .last("limit 1")
+                .one();
+        if (voucher != null) {
+            dto.setVoucherId(voucher.getId());
+            dto.setVoucherTitle(voucher.getTitle());
+            dto.setVoucherSubTitle(voucher.getSubTitle());
+            dto.setVoucherPayValue(voucher.getPayValue());
+            dto.setVoucherActualValue(voucher.getActualValue());
+        }
+        return dto;
+    }
+
+    private Map<Long, User> loadAuthors(List<Long> authorIds) {
+        if (authorIds.isEmpty()) {
+            return Map.of();
+        }
+        return userService.listByIds(authorIds).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity(), (first, second) -> first));
+    }
+
+    private Map<Long, Long> loadCollectCounts(List<Long> blogIds) {
+        if (blogIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Map<String, Object>> rows = blogCollectService.getBaseMapper().selectMaps(
+                new QueryWrapper<BlogCollect>()
+                        .select("blog_id", "count(*) AS collect_count")
+                        .in("blog_id", blogIds)
+                        .groupBy("blog_id"));
+        Map<Long, Long> countMap = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            countMap.put(toLong(row.get("blog_id")), toLong(row.get("collect_count")));
+        }
+        return countMap;
+    }
+
+    private Set<Long> loadCollectedBlogIds(UserDTO currentUser, List<Long> blogIds) {
+        if (currentUser == null || blogIds.isEmpty()) {
+            return Set.of();
+        }
+        return blogCollectService.query()
+                .select("blog_id")
+                .eq("user_id", currentUser.getId())
+                .in("blog_id", blogIds)
+                .list()
+                .stream()
+                .map(BlogCollect::getBlogId)
+                .collect(Collectors.toSet());
+    }
+
+    private Set<Long> loadFollowedAuthorIds(UserDTO currentUser, List<Long> authorIds) {
+        if (currentUser == null || authorIds.isEmpty()) {
+            return Set.of();
+        }
+        return followService.query()
+                .select("follow_user_id")
+                .eq("user_id", currentUser.getId())
+                .in("follow_user_id", authorIds)
+                .list()
+                .stream()
+                .map(follow -> follow.getFollowUserId())
+                .collect(Collectors.toSet());
     }
 
     private Long sumUserLikes(Long userId) {
@@ -330,5 +507,58 @@ public class ContentServiceImpl implements IContentService {
             heat = number.longValue();
         }
         trendMap.putIfAbsent(keyword, Math.max(heat, 1L));
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return 0L;
+        }
+        return Long.parseLong(String.valueOf(value));
+    }
+
+    private AiChatRequest toAiChatRequest(ContentAiRequest request, String message) {
+        AiChatRequest aiRequest = new AiChatRequest();
+        aiRequest.setSessionId(request == null ? null : request.getSessionId());
+        aiRequest.setReset(request == null ? null : request.getReset());
+        aiRequest.setMessage(message);
+        return aiRequest;
+    }
+
+    /**
+     * 内容 AI 的降级入口。
+     * API Key、网络或模型服务不可用时，不让内容页面报错，只返回可展示的兜底文案。
+     */
+    private Result safeAiQuery(AiChatRequest request, String fallbackAnswer) {
+        try {
+            return Result.ok(aiAssistantService.query(request));
+        } catch (RuntimeException e) {
+            Map<String, Object> fallback = new LinkedHashMap<>();
+            fallback.put("answer", fallbackAnswer);
+            fallback.put("degraded", true);
+            return Result.ok(fallback);
+        }
+    }
+
+    /**
+     * 搜索推荐 prompt 在后端集中维护。
+     * 这样前端只关心“用户搜了什么”，不会把模型提示词散落到页面脚本里。
+     */
+    private String buildRecommendPrompt(String query) {
+        return "用户正在内容社区搜索「" + query + "」。" +
+                "请给出简短、具体、可执行的探店推荐，优先结合系统里的店铺、优惠券和笔记信息。" +
+                "回答控制在 80 字以内，语气像真实内容社区的推荐助手。";
+    }
+
+    /**
+     * 笔记详情 prompt 在后端集中维护。
+     * 用固定结构输出，方便前端直接作为“智能看点”展示在详情页里。
+     */
+    private String buildNoteSummaryPrompt(String title, String content) {
+        return "请总结这篇探店笔记的适合人群、核心亮点和注意事项。" +
+                "用三句话回答，不要编号，不要营销套话。" +
+                "标题：" + title + "。正文：" + content;
     }
 }

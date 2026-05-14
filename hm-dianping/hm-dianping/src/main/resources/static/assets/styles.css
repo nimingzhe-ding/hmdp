@@ -383,6 +383,17 @@ img {
   font-weight: 900;
 }
 
+.soft-button {
+  width: 100%;
+  min-height: 40px;
+  margin-bottom: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff1f3;
+  color: var(--accent);
+  font-weight: 900;
+}
+
 .profile-card h2 {
   margin: 0 0 12px;
   font-size: 15px;
@@ -843,6 +854,182 @@ img {
   line-height: 1.78;
 }
 
+.shop-bridge {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  border: 1px solid #f0f0f2;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fff, #fff7f8);
+  padding: 13px;
+}
+
+.shop-main {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.shop-main img {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: #f3f3f4;
+}
+
+.shop-main strong,
+.shop-main span,
+.shop-main small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shop-main strong {
+  font-size: 15px;
+}
+
+.shop-main span {
+  margin-top: 4px;
+  color: #555;
+  font-size: 13px;
+}
+
+.shop-main small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.shop-offer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.shop-offer strong,
+.shop-offer span {
+  display: block;
+}
+
+.shop-offer span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shop-offer button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 14px;
+  font-weight: 900;
+}
+
+.shop-dialog {
+  width: min(560px, calc(100% - 32px));
+}
+
+.shop-dialog-panel {
+  padding: 20px;
+}
+
+.shop-dialog-hero {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.shop-dialog-hero img {
+  width: 112px;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  object-fit: cover;
+  background: #f3f3f4;
+}
+
+.shop-dialog-hero strong,
+.shop-dialog-hero span,
+.shop-dialog-hero small {
+  display: block;
+}
+
+.shop-dialog-hero span {
+  margin-top: 7px;
+  color: #555;
+  line-height: 1.5;
+}
+
+.shop-dialog-hero small {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.voucher-list {
+  display: grid;
+  gap: 10px;
+}
+
+.voucher-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #f0f0f2;
+  border-radius: 16px;
+  background: #fff8f9;
+  padding: 13px;
+}
+
+.voucher-item strong,
+.voucher-item span,
+.voucher-item small {
+  display: block;
+}
+
+.voucher-item span {
+  margin-top: 5px;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.voucher-item button {
+  min-width: 86px;
+  min-height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 14px;
+  font-weight: 900;
+}
+
+.voucher-item button small {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, .82);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.voucher-item button:disabled {
+  background: #151515;
+  cursor: default;
+  opacity: .72;
+}
+
 .note-smart {
   margin-top: 18px;
   padding: 13px 14px;
@@ -914,6 +1101,41 @@ img {
   background: transparent;
   color: var(--muted);
   padding: 0;
+}
+
+.comment-reply {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+}
+
+.reply-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  border-radius: 14px;
+  background: #f8f8f9;
+  padding: 10px 12px;
+}
+
+.reply-item strong {
+  color: #555;
+  font-size: 12px;
+}
+
+.reply-item p {
+  margin: 4px 0 0;
+  color: #222;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.reply-item span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .drawer-actions {
@@ -1177,6 +1399,22 @@ dialog::backdrop {
     margin-inline: -18px;
     padding-inline: 18px;
     overflow-x: auto;
+  }
+
+  .shop-dialog-hero {
+    grid-template-columns: 82px 1fr;
+  }
+
+  .shop-dialog-hero img {
+    width: 82px;
+  }
+
+  .voucher-item {
+    grid-template-columns: 1fr;
+  }
+
+  .voucher-item button {
+    width: 100%;
   }
 
   .mobile-tabbar {
