@@ -60,7 +60,9 @@ const els = {
   merchantPanel: document.querySelector("#merchantPanel"),
   composerForm: document.querySelector("#composerForm"),
   imageFiles: document.querySelector("#imageFiles"),
+  videoFile: document.querySelector("#videoFile"),
   uploadPreview: document.querySelector("#uploadPreview"),
+  videoPreview: document.querySelector("#videoPreview"),
   loginDialog: document.querySelector("#loginDialog"),
   loginForm: document.querySelector("#loginForm"),
   smartCard: document.querySelector("#smartCard"),
@@ -130,6 +132,18 @@ const fallbackNotes = [
     name: "咖啡地图",
     icon: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=120&q=80",
     createTime: "2026-05-07T14:24:00"
+  },
+  {
+    id: 9005,
+    title: "视频笔记：一分钟看完今日探店路线",
+    images: "https://images.unsplash.com/photo-1525610553991-2bede1a236e2?auto=format&fit=crop&w=900&q=80",
+    content: "从咖啡店到晚餐店，一条适合周末的轻松路线。\n#video:https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+    liked: 342,
+    comments: 41,
+    userId: 6,
+    name: "短视频探店员",
+    icon: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80",
+    createTime: "2026-05-12T19:30:00"
   }
 ];
 
@@ -169,6 +183,7 @@ async function request(url, options = {}) {
 function normalizeNote(note, index = 0) {
   const images = String(note.images || "").split(",").map(item => item.trim()).filter(Boolean);
   const image = images[0] || fallbackNotes[index % fallbackNotes.length].images;
+  const parsedContent = parseVideoContent(note.content || "");
   return {
     ...note,
     image,
@@ -177,9 +192,27 @@ function normalizeNote(note, index = 0) {
     icon: normalizeImage(note.icon) || fallbackNotes[index % fallbackNotes.length].icon,
     liked: note.liked || 0,
     comments: note.comments || 0,
-    content: stripHtml(note.content || ""),
+    content: parsedContent.content,
+    videoUrl: normalizeMedia(note.videoUrl || note.video || parsedContent.videoUrl),
+    isVideo: Boolean(note.videoUrl || note.video || parsedContent.videoUrl),
     ratio: [0.78, 1, 1.14, 1.28, 0.92][index % 5]
   };
+}
+
+function parseVideoContent(content) {
+  const text = stripHtml(content || "");
+  const match = text.match(/#video:([^\s]+)/i);
+  return {
+    videoUrl: match ? match[1].trim() : "",
+    content: match ? text.replace(match[0], "").trim() : text
+  };
+}
+
+function normalizeMedia(src) {
+  if (!src) return "";
+  if (/^https?:\/\//.test(src)) return src;
+  if (src.startsWith("/")) return src;
+  return `/imgs/${src}`;
 }
 
 function normalizeImage(src) {
@@ -380,9 +413,12 @@ function createNoteCard(note) {
   const button = document.createElement("button");
   button.type = "button";
   button.addEventListener("click", () => openDrawer(note));
+  const cover = note.isVideo
+    ? `<video class="note-image note-video-cover" style="--ratio:${note.ratio}" src="${normalizeMedia(note.videoUrl)}" poster="${normalizeImage(note.image)}" muted playsinline preload="metadata"></video><span class="video-badge">视频</span>`
+    : `<img class="note-image" style="--ratio:${note.ratio}" src="${normalizeImage(note.image)}" alt="${escapeHtml(note.title)}" loading="lazy">`;
   button.innerHTML = `
     <div class="note-cover">
-      <img class="note-image" style="--ratio:${note.ratio}" src="${normalizeImage(note.image)}" alt="${escapeHtml(note.title)}" loading="lazy">
+      ${cover}
     </div>
     <div class="note-body">
       <h2 class="note-title">${escapeHtml(note.title)}</h2>
@@ -409,6 +445,7 @@ async function openDrawer(note) {
   } catch {
     // 详情聚合接口不可用时继续展示卡片已有数据。
   }
+  pauseFeedVideos();
   state.currentNote = note;
   state.replyTarget = null;
   els.noteSmart.hidden = true;
@@ -538,6 +575,13 @@ function formatMoney(value) {
 }
 
 function renderDrawerImages(note) {
+  if (note.isVideo && note.videoUrl) {
+    els.drawerMedia.innerHTML = `
+      <video class="drawer-video" src="${normalizeMedia(note.videoUrl)}" poster="${normalizeImage(note.image)}" controls autoplay playsinline></video>
+    `;
+    els.drawerThumbs.innerHTML = "";
+    return;
+  }
   const images = (note.images.length ? note.images : [note.image]).slice(0, 9);
   const setActive = index => {
     els.drawerMedia.innerHTML = `<img src="${normalizeImage(images[index])}" alt="${escapeHtml(note.title)}">`;
@@ -554,6 +598,12 @@ function renderDrawerImages(note) {
     button.addEventListener("click", () => setActive(Number(button.dataset.index)));
   });
   setActive(0);
+}
+
+function pauseFeedVideos() {
+  document.querySelectorAll(".note-video-cover").forEach(video => {
+    video.pause();
+  });
 }
 
 function closeDrawer() {
@@ -1423,6 +1473,15 @@ async function uploadSelectedImages() {
   return uploaded;
 }
 
+async function uploadSelectedVideo() {
+  const file = els.videoFile?.files?.[0];
+  if (!file) return "";
+  const formData = new FormData();
+  formData.append("file", file);
+  const name = await request("/upload/video", { method: "POST", body: formData });
+  return `/imgs${name}`;
+}
+
 async function submitComposer(event) {
   event.preventDefault();
   if (!requireLogin()) return;
@@ -1432,9 +1491,11 @@ async function submitComposer(event) {
   const form = new FormData(els.composerForm);
   try {
     const uploaded = await uploadSelectedImages();
+    const uploadedVideo = await uploadSelectedVideo();
     const manualImages = String(form.get("images") || "").trim();
+    const videoUrl = uploadedVideo || String(form.get("videoUrl") || "").trim();
     const content = String(form.get("content") || "").trim();
-    if (!uploaded.length && !manualImages) {
+    if (!uploaded.length && !manualImages && !videoUrl) {
       showStatus("发布笔记至少需要一张图片。");
       return;
     }
@@ -1445,6 +1506,7 @@ async function submitComposer(event) {
     const payload = {
       title: form.get("title"),
       images: uploaded.length ? uploaded.join(",") : manualImages,
+      videoUrl,
       shopId: form.get("shopId") ? Number(form.get("shopId")) : null,
       content: mergeTopics(content, form.get("topics"))
     };
@@ -1452,6 +1514,7 @@ async function submitComposer(event) {
     els.composer.close();
     els.composerForm.reset();
     els.uploadPreview.innerHTML = "";
+    els.videoPreview.innerHTML = "";
     resetAndLoad();
   } catch {
     showStatus("发布失败，请确认已登录，且图片、店铺信息有效。");
@@ -1614,6 +1677,16 @@ els.imageFiles.addEventListener("change", () => {
     const url = URL.createObjectURL(file);
     return `<img src="${url}" alt="">`;
   }).join("");
+});
+
+els.videoFile.addEventListener("change", () => {
+  const file = els.videoFile.files[0];
+  if (!file) {
+    els.videoPreview.innerHTML = "";
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  els.videoPreview.innerHTML = `<video src="${url}" controls muted playsinline></video>`;
 });
 
 document.querySelectorAll("[data-feed]").forEach(button => {

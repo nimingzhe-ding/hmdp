@@ -25,7 +25,9 @@ import java.util.UUID;
 public class UploadController {
 
     private static final long MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+    private static final long MAX_VIDEO_SIZE = 50 * 1024 * 1024;
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "gif", "webp");
+    private static final Set<String> ALLOWED_VIDEO_EXTENSIONS = Set.of("mp4", "webm", "mov");
 
     @Value("${hmdp.upload.image-dir}")
     private String imageUploadDir;
@@ -53,6 +55,30 @@ public class UploadController {
             return Result.ok(fileName);
         } catch (IOException e) {
             throw new RuntimeException("文件上传失败", e);
+        }
+    }
+
+    @PostMapping("video")
+    public Result uploadVideo(@RequestParam("file") MultipartFile video) {
+        if (video == null || video.isEmpty()) {
+            return Result.fail("上传文件不能为空");
+        }
+        if (video.getSize() > MAX_VIDEO_SIZE) {
+            return Result.fail("视频大小不能超过50MB");
+        }
+        String suffix = getValidatedVideoSuffix(video);
+        if (suffix == null) {
+            return Result.fail("只支持 mp4、webm、mov 视频");
+        }
+        try {
+            String fileName = createNewMediaFileName("videos", suffix);
+            Path target = resolveUploadPath(fileName);
+            Files.createDirectories(target.getParent());
+            video.transferTo(target.toFile());
+            log.debug("视频上传成功: {}", fileName);
+            return Result.ok(fileName);
+        } catch (IOException e) {
+            throw new RuntimeException("视频上传失败", e);
         }
     }
 
@@ -93,12 +119,29 @@ public class UploadController {
         return suffix;
     }
 
+    private String getValidatedVideoSuffix(MultipartFile video) {
+        String originalFilename = StrUtil.blankToDefault(video.getOriginalFilename(), "");
+        String suffix = StrUtil.subAfter(originalFilename, ".", true).toLowerCase(Locale.ROOT);
+        if (!ALLOWED_VIDEO_EXTENSIONS.contains(suffix)) {
+            return null;
+        }
+        String contentType = StrUtil.blankToDefault(video.getContentType(), "").toLowerCase(Locale.ROOT);
+        if (!contentType.startsWith("video/") && !"application/octet-stream".equals(contentType)) {
+            return null;
+        }
+        return suffix;
+    }
+
     private String createNewFileName(String suffix) {
+        return createNewMediaFileName("blogs", suffix);
+    }
+
+    private String createNewMediaFileName(String folder, String suffix) {
         String name = UUID.randomUUID().toString();
         int hash = name.hashCode();
         int d1 = hash & 0xF;
         int d2 = (hash >> 4) & 0xF;
-        return StrUtil.format("/blogs/{}/{}/{}.{}", d1, d2, name, suffix);
+        return StrUtil.format("/{}/{}/{}/{}.{}", folder, d1, d2, name, suffix);
     }
 
     private Path resolveUploadPath(String filename) {

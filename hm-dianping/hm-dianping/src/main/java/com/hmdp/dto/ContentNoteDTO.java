@@ -15,6 +15,7 @@ public class ContentNoteDTO {
     private Long userId;
     private String title;
     private String images;
+    private String videoUrl;
     private String content;
     private Integer liked;
     private Integer comments;

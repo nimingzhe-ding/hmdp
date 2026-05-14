@@ -83,6 +83,9 @@ ALTER TABLE `tb_voucher`
   ADD COLUMN IF NOT EXISTS `product_id` bigint UNSIGNED NULL COMMENT '商城商品id' AFTER `merchant_id`,
   ADD INDEX IF NOT EXISTS `idx_mall_voucher` (`merchant_id`, `product_id`, `status`);
 
+ALTER TABLE `tb_blog`
+  ADD COLUMN IF NOT EXISTS `video_url` varchar(1024) NULL COMMENT '视频笔记地址' AFTER `images`;
+
 INSERT INTO `tb_merchant`
 (`id`, `user_id`, `name`, `avatar`, `description`, `phone`, `address`, `status`, `audit_status`)
 SELECT 1, 1, '探店优选旗舰店',

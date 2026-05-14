@@ -363,6 +363,7 @@ public class ContentServiceImpl implements IContentService {
         dto.setUserId(blog.getUserId());
         dto.setTitle(blog.getTitle());
         dto.setImages(blog.getImages());
+        dto.setVideoUrl(blog.getVideoUrl());
         dto.setContent(blog.getContent());
         dto.setLiked(blog.getLiked() == null ? 0 : blog.getLiked());
         dto.setComments(blog.getComments() == null ? 0 : blog.getComments());

@@ -801,6 +801,23 @@ img {
   transition: transform .22s ease;
 }
 
+.note-video-cover {
+  pointer-events: none;
+}
+
+.video-badge {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .68);
+  color: #fff;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .note-card:hover .note-image {
   transform: scale(1.025);
 }
@@ -934,6 +951,13 @@ img {
   max-height: calc(100vh - 112px);
   object-fit: contain;
   border-radius: 16px;
+}
+
+.drawer-video {
+  width: 100%;
+  max-height: calc(100vh - 112px);
+  border-radius: 16px;
+  background: #000;
 }
 
 .thumb-row {
@@ -1694,6 +1718,10 @@ dialog::backdrop {
   font-weight: 400;
 }
 
+.video-upload-box {
+  min-height: 92px;
+}
+
 .preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
@@ -1706,6 +1734,18 @@ dialog::backdrop {
   aspect-ratio: 1;
   border-radius: 12px;
   object-fit: cover;
+}
+
+.video-preview {
+  margin-bottom: 14px;
+}
+
+.video-preview video {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  border-radius: 14px;
+  background: #000;
 }
 
 .code-row {

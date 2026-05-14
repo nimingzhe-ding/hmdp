@@ -296,6 +296,12 @@
         <small>支持多张图片，发布前会自动上传</small>
       </label>
       <div class="preview-grid" id="uploadPreview"></div>
+      <label class="upload-box video-upload-box" for="videoFile">
+        <input id="videoFile" name="videoFile" type="file" accept="video/mp4,video/webm,video/quicktime">
+        <span>上传视频</span>
+        <small>支持 MP4/WebM/MOV，发布前会自动上传</small>
+      </label>
+      <div class="video-preview" id="videoPreview"></div>
       <label>
         标题
         <input name="title" maxlength="80" required placeholder="比如：人均 30 的宝藏茶餐厅">
@@ -303,6 +309,10 @@
       <label>
         图片地址
         <input name="images" placeholder="/imgs/blogs/blog1.jpg，多个地址用英文逗号分隔">
+      </label>
+      <label>
+        店铺 ID
+        <input name="videoUrl" placeholder="MP4 地址，填写后作为视频笔记展示">
       </label>
       <label>
         店铺 ID

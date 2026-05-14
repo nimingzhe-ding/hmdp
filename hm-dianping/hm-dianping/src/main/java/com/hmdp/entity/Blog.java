@@ -69,6 +69,8 @@ public class Blog implements Serializable {
     /**
      * 探店的文字描述
      */
+    private String videoUrl;
+
     private String content;
 
     /**
