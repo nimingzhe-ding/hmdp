@@ -72,6 +72,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         MallOrder order = new MallOrder();
         order.setId(redisIdWorker.nextId("mall_order"));
         order.setUserId(user.getId());
+        order.setMerchantId(product.getMerchantId());
         order.setProductId(productId);
         order.setProductTitle(product.getTitle());
         order.setProductImage(firstImage(product.getImages()));

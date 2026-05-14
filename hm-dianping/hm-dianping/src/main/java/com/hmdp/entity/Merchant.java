@@ -11,27 +11,32 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 商城订单。
- * 第一版使用主订单承载商品明细快照，后续可拆成 order/order_item 两张表。
+ * 商家主体。
+ * 第一版采用“用户申请即开店”的轻量模式，后续可把 status 接入管理员审核。
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@TableName("tb_mall_order")
-public class MallOrder implements Serializable {
+@TableName("tb_merchant")
+public class Merchant implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    @TableId(value = "id", type = IdType.INPUT)
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
     private Long userId;
-    private Long merchantId;
-    private Long productId;
-    private String productTitle;
-    private String productImage;
-    private Long price;
-    private Integer quantity;
-    private Long totalAmount;
+    private String name;
+    private String avatar;
+    private String description;
+    private String phone;
+    private String address;
+    /**
+     * 1 正常营业，2 休息中，3 已关闭。
+     */
     private Integer status;
+    /**
+     * 1 待审核，2 已通过，3 已拒绝。第一版自动通过。
+     */
+    private Integer auditStatus;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

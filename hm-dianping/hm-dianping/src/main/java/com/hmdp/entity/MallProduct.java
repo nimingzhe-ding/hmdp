@@ -23,6 +23,7 @@ public class MallProduct implements Serializable {
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
+    private Long merchantId;
     private String title;
     private String subTitle;
     private String images;
