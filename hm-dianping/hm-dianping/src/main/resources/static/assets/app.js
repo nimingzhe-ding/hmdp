@@ -13,6 +13,8 @@ const state = {
   mallCategory: "all",
   mallQuery: "",
   mallProducts: [],
+  videoNotes: [],
+  videoObserver: null,
   merchant: null,
   merchantProducts: [],
   merchantOrders: [],
@@ -45,6 +47,8 @@ const els = {
   mobileCategoryList: document.querySelector("#mobileCategoryList"),
   contentArea: document.querySelector(".content-area"),
   mallArea: document.querySelector("#mallArea"),
+  videoArea: document.querySelector("#videoArea"),
+  videoFeed: document.querySelector("#videoFeed"),
   productGrid: document.querySelector("#productGrid"),
   drawer: document.querySelector("#detailDrawer"),
   drawerMedia: document.querySelector("#drawerMedia"),
@@ -405,6 +409,12 @@ function appendNotes(notes) {
   const fragment = document.createDocumentFragment();
   notes.forEach(note => fragment.appendChild(createNoteCard(note)));
   els.feed.appendChild(fragment);
+  mergeVideoNotes(notes);
+}
+
+function mergeVideoNotes(notes) {
+  const exists = new Set(state.videoNotes.map(note => String(note.id)));
+  notes.filter(note => note.isVideo && !exists.has(String(note.id))).forEach(note => state.videoNotes.push(note));
 }
 
 function createNoteCard(note) {
@@ -603,6 +613,90 @@ function renderDrawerImages(note) {
 function pauseFeedVideos() {
   document.querySelectorAll(".note-video-cover").forEach(video => {
     video.pause();
+  });
+}
+
+function renderVideoFeed() {
+  const videos = state.videoNotes.length
+    ? state.videoNotes
+    : fallbackNotes.map(normalizeNote).filter(note => note.isVideo);
+  if (!videos.length) {
+    els.videoFeed.innerHTML = `<p class="empty-text video-empty">还没有视频笔记，发布时上传视频就会出现在这里。</p>`;
+    return;
+  }
+  els.videoFeed.innerHTML = videos.map(note => `
+    <article class="video-slide" data-video-id="${note.id}">
+      <video class="immersive-video" src="${normalizeMedia(note.videoUrl)}" poster="${normalizeImage(note.image)}" loop playsinline preload="metadata"></video>
+      <div class="video-gradient"></div>
+      <div class="video-info">
+        <div class="video-author">
+          <img src="${normalizeImage(note.icon)}" alt="">
+          <span>${escapeHtml(note.name)}</span>
+        </div>
+        <h2>${escapeHtml(note.title)}</h2>
+        <p>${escapeHtml(note.content || "")}</p>
+      </div>
+      <div class="video-actions">
+        <button type="button" data-video-like="${note.id}"><span>♥</span><small>${note.liked || 0}</small></button>
+        <button type="button" data-video-comment="${note.id}"><span>评</span><small>${note.comments || 0}</small></button>
+        <button type="button" data-video-buy="${note.id}"><span>购</span><small>同款</small></button>
+        <button type="button" data-video-open="${note.id}"><span>···</span><small>详情</small></button>
+      </div>
+    </article>
+  `).join("");
+  bindVideoFeedEvents(videos);
+}
+
+function bindVideoFeedEvents(videos) {
+  if (state.videoObserver) state.videoObserver.disconnect();
+  state.videoObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      const video = entry.target.querySelector("video");
+      if (!video) return;
+      if (entry.isIntersecting && entry.intersectionRatio > 0.62) {
+        pauseImmersiveVideos(video);
+        video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+    });
+  }, { threshold: [0, 0.62, 1] });
+  els.videoFeed.querySelectorAll(".video-slide").forEach(slide => state.videoObserver.observe(slide));
+  els.videoFeed.querySelectorAll(".immersive-video").forEach(video => {
+    video.addEventListener("click", () => {
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
+    });
+  });
+  els.videoFeed.querySelectorAll("[data-video-open], [data-video-comment]").forEach(button => {
+    button.addEventListener("click", () => {
+      const note = videos.find(item => String(item.id) === String(button.dataset.videoOpen || button.dataset.videoComment));
+      if (note) openDrawer(note);
+    });
+  });
+  els.videoFeed.querySelectorAll("[data-video-like]").forEach(button => {
+    button.addEventListener("click", () => {
+      const note = videos.find(item => String(item.id) === String(button.dataset.videoLike));
+      if (note) likeNote(note);
+    });
+  });
+  els.videoFeed.querySelectorAll("[data-video-buy]").forEach(button => {
+    button.addEventListener("click", () => {
+      const note = videos.find(item => String(item.id) === String(button.dataset.videoBuy));
+      if (note?.shop) renderShopBridge(note.shop);
+      switchMall();
+    });
+  });
+}
+
+function playCurrentImmersiveVideo() {
+  const first = els.videoFeed.querySelector(".immersive-video");
+  if (first) first.play().catch(() => {});
+}
+
+function pauseImmersiveVideos(except) {
+  document.querySelectorAll(".immersive-video").forEach(video => {
+    if (video !== except) video.pause();
   });
 }
 
@@ -816,9 +910,14 @@ function normalizeProduct(product, index = 0) {
 }
 
 function setMallActive(active) {
-  document.querySelectorAll("#mallTab, #railMall, #mobileMall").forEach(item => {
-    item.classList.toggle("is-active", active);
-  });
+  document.querySelectorAll("#mallTab, #railMall, #mobileMall").forEach(item => item.classList.toggle("is-active", active));
+  if (active) {
+    document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
+  }
+}
+
+function setVideoActive(active) {
+  document.querySelectorAll("#videoTab, #railVideo, #mobileVideo").forEach(item => item.classList.toggle("is-active", active));
   if (active) {
     document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
   }
@@ -827,17 +926,35 @@ function setMallActive(active) {
 function showContentArea() {
   els.contentArea.hidden = false;
   els.mallArea.hidden = true;
+  els.videoArea.hidden = true;
   setMallActive(false);
+  setVideoActive(false);
+  pauseImmersiveVideos();
 }
 
 function switchMall() {
   state.mode = "mall";
   state.mallQuery = els.search.value.trim();
   els.contentArea.hidden = true;
+  els.videoArea.hidden = true;
   els.mallArea.hidden = false;
   setMallActive(true);
+  setVideoActive(false);
+  pauseImmersiveVideos();
   hideStatus();
   loadProducts();
+}
+
+function switchVideo() {
+  state.mode = "video";
+  els.contentArea.hidden = true;
+  els.mallArea.hidden = true;
+  els.videoArea.hidden = false;
+  setMallActive(false);
+  setVideoActive(true);
+  hideStatus();
+  renderVideoFeed();
+  setTimeout(playCurrentImmersiveVideo, 80);
 }
 
 async function loadProducts() {
@@ -1716,6 +1833,9 @@ document.querySelector("#closeShopDialog").addEventListener("click", () => els.s
 document.querySelector("#mallTab").addEventListener("click", switchMall);
 document.querySelector("#railMall").addEventListener("click", switchMall);
 document.querySelector("#mobileMall").addEventListener("click", switchMall);
+document.querySelector("#videoTab").addEventListener("click", switchVideo);
+document.querySelector("#railVideo").addEventListener("click", switchVideo);
+document.querySelector("#mobileVideo").addEventListener("click", switchVideo);
 document.querySelector("#openCart").addEventListener("click", openCartDialog);
 document.querySelector("#openOrders").addEventListener("click", openOrdersDialog);
 document.querySelector("#openMerchantCenter").addEventListener("click", openMerchantCenter);
@@ -1767,7 +1887,7 @@ window.addEventListener("keydown", event => {
 });
 
 window.addEventListener("scroll", () => {
-  if (state.mode === "mall") return;
+  if (state.mode === "mall" || state.mode === "video") return;
   const nearBottom = window.innerHeight + window.scrollY > document.body.offsetHeight - 620;
   if (nearBottom) loadNotes();
 }, { passive: true });
