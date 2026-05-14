@@ -22,10 +22,10 @@ import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.data.redis.stream.StreamReadOptions;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -250,8 +250,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                         handleVoucherOrder(toVoucherOrder(record));
                         ackOrder(record);
                     }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
                 } catch (Exception e) {
                     log.error("处理 Stream 订单异常，准备处理 pending-list", e);
                     handlePendingOrders();

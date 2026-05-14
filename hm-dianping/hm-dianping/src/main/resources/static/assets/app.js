@@ -10,6 +10,10 @@ const state = {
   feed: "hot",
   mode: "feed",
   category: "all",
+  mallCategory: "all",
+  mallQuery: "",
+  mallProducts: [],
+  currentProduct: null,
   currentNote: null,
   currentUser: null,
   replyTarget: null,
@@ -34,12 +38,18 @@ const els = {
   suggestPopover: document.querySelector("#suggestPopover"),
   categoryList: document.querySelector("#categoryList"),
   mobileCategoryList: document.querySelector("#mobileCategoryList"),
+  contentArea: document.querySelector(".content-area"),
+  mallArea: document.querySelector("#mallArea"),
+  productGrid: document.querySelector("#productGrid"),
   drawer: document.querySelector("#detailDrawer"),
   drawerMedia: document.querySelector("#drawerMedia"),
   drawerThumbs: document.querySelector("#drawerThumbs"),
   composer: document.querySelector("#composerDialog"),
   shopDialog: document.querySelector("#shopDialog"),
+  productDialog: document.querySelector("#productDialog"),
+  cartDialog: document.querySelector("#cartDialog"),
   voucherList: document.querySelector("#voucherList"),
+  cartList: document.querySelector("#cartList"),
   composerForm: document.querySelector("#composerForm"),
   imageFiles: document.querySelector("#imageFiles"),
   uploadPreview: document.querySelector("#uploadPreview"),
@@ -729,6 +739,242 @@ function resetAndLoad(clearStatus = true) {
   loadNotes();
 }
 
+// ------------------------------
+// Mall product, cart, and order workflow
+// ------------------------------
+function normalizeProduct(product, index = 0) {
+  const images = String(product.images || "").split(",").map(item => item.trim()).filter(Boolean);
+  return {
+    ...product,
+    image: normalizeImage(images[0]) || fallbackNotes[index % fallbackNotes.length].images,
+    title: product.title || "精选商品",
+    subTitle: product.subTitle || product.sub_title || "内容同款好物",
+    price: Number(product.price || 0),
+    originPrice: Number(product.originPrice || product.origin_price || 0),
+    stock: Number(product.stock || 0),
+    sold: Number(product.sold || 0),
+    category: product.category || "all"
+  };
+}
+
+function setMallActive(active) {
+  document.querySelectorAll("#mallTab, #railMall, #mobileMall").forEach(item => {
+    item.classList.toggle("is-active", active);
+  });
+  if (active) {
+    document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
+  }
+}
+
+function showContentArea() {
+  els.contentArea.hidden = false;
+  els.mallArea.hidden = true;
+  setMallActive(false);
+}
+
+function switchMall() {
+  state.mode = "mall";
+  els.contentArea.hidden = true;
+  els.mallArea.hidden = false;
+  setMallActive(true);
+  hideStatus();
+  if (!state.mallProducts.length) loadProducts();
+}
+
+async function loadProducts() {
+  els.productGrid.innerHTML = `<p class="empty-text mall-empty">正在加载商城商品...</p>`;
+  const params = new URLSearchParams({ current: "1", category: state.mallCategory });
+  if (state.mallQuery) params.set("query", state.mallQuery);
+  try {
+    const data = await request(`/mall/products?${params.toString()}`);
+    const products = Array.isArray(data) ? data.map(normalizeProduct) : [];
+    state.mallProducts = products;
+    renderProducts(products);
+  } catch {
+    state.mallProducts = [];
+    els.productGrid.innerHTML = `<p class="empty-text mall-empty">商城接口暂时不可用，请先执行商城数据库脚本并重启后端。</p>`;
+  }
+}
+
+function renderProducts(products) {
+  if (!products.length) {
+    els.productGrid.innerHTML = `<p class="empty-text mall-empty">这个类目暂时没有商品。</p>`;
+    return;
+  }
+  els.productGrid.innerHTML = products.map(product => `
+    <article class="product-card">
+      <button type="button" data-product-id="${product.id}">
+        <div class="product-image-wrap">
+          <img class="product-image" src="${normalizeImage(product.image)}" alt="${escapeHtml(product.title)}" loading="lazy">
+          <span>已售 ${product.sold}</span>
+        </div>
+        <div class="product-body">
+          <h2>${escapeHtml(product.title)}</h2>
+          <p>${escapeHtml(product.subTitle)}</p>
+          <div class="product-row">
+            <strong>¥${formatMoney(product.price)}</strong>
+            ${product.originPrice ? `<small>¥${formatMoney(product.originPrice)}</small>` : ""}
+          </div>
+        </div>
+      </button>
+    </article>
+  `).join("");
+  els.productGrid.querySelectorAll("[data-product-id]").forEach(button => {
+    button.addEventListener("click", () => openProduct(button.dataset.productId));
+  });
+}
+
+async function openProduct(productId) {
+  let product = state.mallProducts.find(item => String(item.id) === String(productId));
+  try {
+    product = normalizeProduct(await request(`/mall/products/${productId}`));
+  } catch {
+    // 列表数据足够支撑第一版详情预览；详情接口异常时继续使用当前卡片数据。
+  }
+  if (!product) return;
+  state.currentProduct = product;
+  document.querySelector("#productDialogTitle").textContent = product.title;
+  document.querySelector("#productDialogImage").src = normalizeImage(product.image);
+  document.querySelector("#productDialogSub").textContent = product.subTitle;
+  document.querySelector("#productDialogPrice").textContent = `¥${formatMoney(product.price)}`;
+  document.querySelector("#productDialogStock").textContent = `库存 ${product.stock} · 已售 ${product.sold}`;
+  els.productDialog.showModal();
+}
+
+async function addCurrentProductToCart() {
+  if (!state.currentProduct || !requireLogin()) return;
+  await addToCart(state.currentProduct.id, 1);
+}
+
+async function addToCart(productId, quantity = 1) {
+  try {
+    await request("/mall/cart", {
+      method: "POST",
+      body: JSON.stringify({ productId: Number(productId), quantity })
+    });
+    showStatus("已加入购物车，可以继续逛或去购物车下单。");
+  } catch (error) {
+    showStatus(error.message || "加入购物车失败，请检查登录状态和库存。");
+  }
+}
+
+async function buyCurrentProductNow() {
+  if (!state.currentProduct || !requireLogin()) return;
+  try {
+    const order = await createMallOrder({ productId: state.currentProduct.id, quantity: 1 });
+    els.productDialog.close();
+    showStatus(`下单成功，订单号：${order.id}`);
+  } catch (error) {
+    showStatus(error.message || "下单失败，请稍后再试。");
+  }
+}
+
+async function createMallOrder(payload) {
+  return request("/mall/orders", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+async function openCartDialog() {
+  if (!requireLogin()) return;
+  document.querySelector("#cartDialogTitle").textContent = "购物车";
+  els.cartList.innerHTML = `<p class="empty-text">正在加载购物车...</p>`;
+  els.cartDialog.showModal();
+  try {
+    const items = await request("/mall/cart");
+    renderCartItems(Array.isArray(items) ? items : []);
+  } catch {
+    els.cartList.innerHTML = `<p class="empty-text">购物车加载失败，请确认已经登录。</p>`;
+  }
+}
+
+function renderCartItems(items) {
+  if (!items.length) {
+    els.cartList.innerHTML = `<p class="empty-text">购物车还是空的，先去商城挑一件。</p>`;
+    return;
+  }
+  els.cartList.innerHTML = items.map(item => `
+    <article class="cart-item">
+      <img src="${normalizeImage(item.image)}" alt="${escapeHtml(item.title)}">
+      <div>
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>¥${formatMoney(item.price)} × ${item.quantity}</span>
+        <small>小计 ¥${formatMoney(item.totalAmount)}</small>
+      </div>
+      <div class="cart-actions">
+        <button class="publish-button" type="button" data-cart-order="${item.id}">下单</button>
+        <button class="ghost-button" type="button" data-cart-remove="${item.id}">删除</button>
+      </div>
+    </article>
+  `).join("");
+  els.cartList.querySelectorAll("[data-cart-order]").forEach(button => {
+    button.addEventListener("click", () => orderFromCart(button.dataset.cartOrder));
+  });
+  els.cartList.querySelectorAll("[data-cart-remove]").forEach(button => {
+    button.addEventListener("click", () => removeCartItem(button.dataset.cartRemove));
+  });
+}
+
+async function orderFromCart(cartItemId) {
+  try {
+    const order = await createMallOrder({ cartItemId: Number(cartItemId) });
+    showStatus(`下单成功，订单号：${order.id}`);
+    openCartDialog();
+  } catch (error) {
+    showStatus(error.message || "购物车下单失败，请检查库存。");
+  }
+}
+
+async function removeCartItem(cartItemId) {
+  try {
+    await request(`/mall/cart/${cartItemId}`, { method: "DELETE" });
+    openCartDialog();
+  } catch {
+    showStatus("删除购物车商品失败，请稍后再试。");
+  }
+}
+
+async function openOrdersDialog() {
+  if (!requireLogin()) return;
+  document.querySelector("#cartDialogTitle").textContent = "我的订单";
+  els.cartList.innerHTML = `<p class="empty-text">正在加载订单...</p>`;
+  els.cartDialog.showModal();
+  try {
+    const orders = await request("/mall/orders");
+    renderOrders(Array.isArray(orders) ? orders : []);
+  } catch {
+    els.cartList.innerHTML = `<p class="empty-text">订单加载失败，请确认已经登录。</p>`;
+  }
+}
+
+function renderOrders(orders) {
+  if (!orders.length) {
+    els.cartList.innerHTML = `<p class="empty-text">还没有商城订单。</p>`;
+    return;
+  }
+  els.cartList.innerHTML = orders.map(order => `
+    <article class="cart-item order-item">
+      <img src="${normalizeImage(order.productImage)}" alt="${escapeHtml(order.productTitle)}">
+      <div>
+        <strong>${escapeHtml(order.productTitle)}</strong>
+        <span>订单号 ${order.id}</span>
+        <small>¥${formatMoney(order.totalAmount)} · ${mallOrderStatus(order.status)}</small>
+      </div>
+    </article>
+  `).join("");
+}
+
+function mallOrderStatus(status) {
+  return {
+    1: "待支付",
+    2: "已支付",
+    3: "已发货",
+    4: "已完成",
+    5: "已取消"
+  }[Number(status)] || "处理中";
+}
+
 async function loadSmartRecommendation(question) {
   if (!question) {
     els.smartCard.hidden = true;
@@ -770,6 +1016,7 @@ async function analyzeCurrentNote(note) {
 }
 
 function switchFeed(feed) {
+  showContentArea();
   state.mode = "feed";
   state.feed = feed;
   document.querySelectorAll("[data-feed]").forEach(item => {
@@ -780,6 +1027,7 @@ function switchFeed(feed) {
 
 function switchPersonalMode(mode) {
   if (!requireLogin()) return;
+  showContentArea();
   state.mode = mode;
   state.query = "";
   els.search.value = "";
@@ -963,6 +1211,7 @@ function escapeHtml(value) {
 // ------------------------------
 els.searchForm.addEventListener("submit", event => {
   event.preventDefault();
+  showContentArea();
   state.mode = "feed";
   state.query = els.search.value.trim();
   els.suggestPopover.classList.remove("is-open");
@@ -977,6 +1226,7 @@ els.search.addEventListener("input", () => {
   renderSuggestions(els.search.value);
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
+    if (state.mode === "mall") return;
     state.mode = "feed";
     state.query = els.search.value.trim();
     resetAndLoad();
@@ -996,6 +1246,7 @@ document.querySelectorAll("[data-feed]").forEach(button => {
 
 document.querySelectorAll("[data-smart-query]").forEach(button => {
   button.addEventListener("click", () => {
+    showContentArea();
     state.mode = "feed";
     state.query = button.dataset.smartQuery;
     els.search.value = state.query;
@@ -1013,6 +1264,24 @@ document.querySelector("#openComposer").addEventListener("click", () => requireL
 document.querySelector("#railPublish").addEventListener("click", () => requireLogin() && els.composer.showModal());
 document.querySelector("#mobilePublish").addEventListener("click", () => requireLogin() && els.composer.showModal());
 document.querySelector("#closeShopDialog").addEventListener("click", () => els.shopDialog.close());
+document.querySelector("#mallTab").addEventListener("click", switchMall);
+document.querySelector("#railMall").addEventListener("click", switchMall);
+document.querySelector("#mobileMall").addEventListener("click", switchMall);
+document.querySelector("#openCart").addEventListener("click", openCartDialog);
+document.querySelector("#openOrders").addEventListener("click", openOrdersDialog);
+document.querySelector("#closeProductDialog").addEventListener("click", () => els.productDialog.close());
+document.querySelector("#closeCartDialog").addEventListener("click", () => els.cartDialog.close());
+document.querySelector("#addProductCart").addEventListener("click", addCurrentProductToCart);
+document.querySelector("#buyProductNow").addEventListener("click", buyCurrentProductNow);
+document.querySelectorAll("[data-mall-category]").forEach(button => {
+  button.addEventListener("click", () => {
+    state.mallCategory = button.dataset.mallCategory;
+    document.querySelectorAll("[data-mall-category]").forEach(item => {
+      item.classList.toggle("is-active", item === button);
+    });
+    loadProducts();
+  });
+});
 document.querySelector("#loginButton").addEventListener("click", () => els.loginDialog.showModal());
 document.querySelector("#profileLogin").addEventListener("click", () => {
   if (token()) {
@@ -1047,6 +1316,7 @@ window.addEventListener("keydown", event => {
 });
 
 window.addEventListener("scroll", () => {
+  if (state.mode === "mall") return;
   const nearBottom = window.innerHeight + window.scrollY > document.body.offsetHeight - 620;
   if (nearBottom) loadNotes();
 }, { passive: true });

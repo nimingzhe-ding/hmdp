@@ -19,6 +19,7 @@
         <button class="tab is-active" data-feed="hot">发现</button>
         <button class="tab" data-feed="follow">关注</button>
         <button class="tab" data-feed="nearby">附近</button>
+        <button class="tab" id="mallTab" type="button">商城</button>
       </nav>
 
       <form class="search-box" id="searchForm" role="search">
@@ -55,6 +56,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
           <span>发布</span>
         </button>
+        <button class="rail-item" id="railMall" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12l-1 13H7L6 7Zm2.2 2 .7 9h6.2l.7-9H8.2ZM9 5a3 3 0 0 1 6 0h-2a1 1 0 0 0-2 0H9Z"/></svg>
+          <span>商城</span>
+        </button>
       </aside>
 
       <!-- 中央内容区：频道筛选、AI 搜索推荐、瀑布流笔记 -->
@@ -76,6 +81,26 @@
         </div>
         <div class="masonry-feed" id="noteFeed" aria-live="polite"></div>
         <div class="feed-loading" id="feedLoading">正在加载更多笔记...</div>
+      </section>
+
+      <section class="mall-area" id="mallArea" aria-label="商城" hidden>
+        <div class="mall-head">
+          <div>
+            <strong>探店商城</strong>
+            <span>内容同款、探店套餐、创作装备</span>
+          </div>
+          <div class="mall-actions">
+            <button class="soft-button" id="openCart" type="button">购物车</button>
+            <button class="soft-button" id="openOrders" type="button">我的订单</button>
+          </div>
+        </div>
+        <div class="mall-tabs">
+          <button class="category-pill is-active" data-mall-category="all">推荐</button>
+          <button class="category-pill" data-mall-category="food">美食套餐</button>
+          <button class="category-pill" data-mall-category="coffee">咖啡</button>
+          <button class="category-pill" data-mall-category="gear">装备</button>
+        </div>
+        <div class="product-grid" id="productGrid"></div>
       </section>
 
       <!-- 右侧个人面板：登录状态、数据概览、创作灵感 -->
@@ -120,6 +145,7 @@
       <button class="is-active" type="button" data-feed="hot">发现</button>
       <button type="button" data-feed="follow">关注</button>
       <button type="button" data-feed="nearby">附近</button>
+      <button type="button" id="mobileMall">商城</button>
       <button type="button" id="mobilePublish">发布</button>
     </nav>
   </div>
@@ -205,6 +231,39 @@
         </div>
       </div>
       <div class="voucher-list" id="voucherList"></div>
+    </div>
+  </dialog>
+
+  <dialog class="shop-dialog" id="productDialog">
+    <div class="shop-dialog-panel">
+      <div class="dialog-head">
+        <h2 id="productDialogTitle">商品详情</h2>
+        <button class="icon-button" id="closeProductDialog" type="button" aria-label="关闭商品详情">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/></svg>
+        </button>
+      </div>
+      <img class="product-dialog-image" id="productDialogImage" alt="">
+      <p id="productDialogSub"></p>
+      <div class="product-dialog-price">
+        <strong id="productDialogPrice"></strong>
+        <span id="productDialogStock"></span>
+      </div>
+      <div class="dialog-actions">
+        <button class="ghost-button" id="addProductCart" type="button">加入购物车</button>
+        <button class="publish-button" id="buyProductNow" type="button">立即购买</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="shop-dialog" id="cartDialog">
+    <div class="shop-dialog-panel">
+      <div class="dialog-head">
+        <h2 id="cartDialogTitle">购物车</h2>
+        <button class="icon-button" id="closeCartDialog" type="button" aria-label="关闭购物车">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/></svg>
+        </button>
+      </div>
+      <div class="voucher-list" id="cartList"></div>
     </div>
   </dialog>
 
