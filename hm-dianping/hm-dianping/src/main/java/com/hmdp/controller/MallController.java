@@ -66,6 +66,11 @@ public class MallController {
         return orderService.createOrder(request);
     }
 
+    @PostMapping("/orders/{id}/pay")
+    public Result payOrder(@PathVariable("id") Long id) {
+        return orderService.payOrder(id);
+    }
+
     @GetMapping("/orders")
     public Result orders() {
         return orderService.listMine();

@@ -12,4 +12,6 @@ public interface IMallOrderService extends IService<MallOrder> {
     Result createOrder(MallOrderRequest request);
 
     Result listMine();
+
+    Result payOrder(Long orderId);
 }

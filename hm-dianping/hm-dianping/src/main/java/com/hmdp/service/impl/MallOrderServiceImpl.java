@@ -95,6 +95,35 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         return Result.ok(query().eq("user_id", user.getId()).orderByDesc("create_time").list());
     }
 
+    @Override
+    public Result payOrder(Long orderId) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("请先登录");
+        }
+        if (orderId == null) {
+            return Result.fail("订单ID不能为空");
+        }
+        MallOrder order = getById(orderId);
+        if (order == null || !user.getId().equals(order.getUserId())) {
+            return Result.fail("订单不存在");
+        }
+        if (order.getStatus() != null && order.getStatus() == 2) {
+            return Result.ok(order);
+        }
+        boolean updated = update()
+                .set("status", 2)
+                .eq("id", orderId)
+                .eq("user_id", user.getId())
+                .eq("status", 1)
+                .update();
+        if (!updated) {
+            return Result.fail("当前订单状态不能支付");
+        }
+        order.setStatus(2);
+        return Result.ok(order);
+    }
+
     private String firstImage(String images) {
         if (images == null || images.isBlank()) {
             return "";

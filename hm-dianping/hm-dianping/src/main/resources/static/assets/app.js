@@ -774,11 +774,12 @@ function showContentArea() {
 
 function switchMall() {
   state.mode = "mall";
+  state.mallQuery = els.search.value.trim();
   els.contentArea.hidden = true;
   els.mallArea.hidden = false;
   setMallActive(true);
   hideStatus();
-  if (!state.mallProducts.length) loadProducts();
+  loadProducts();
 }
 
 async function loadProducts() {
@@ -973,6 +974,68 @@ function mallOrderStatus(status) {
     4: "已完成",
     5: "已取消"
   }[Number(status)] || "处理中";
+}
+
+async function payMallOrder(orderId) {
+  return request(`/mall/orders/${orderId}/pay`, { method: "POST" });
+}
+
+async function buyCurrentProductNow() {
+  if (!state.currentProduct || !requireLogin()) return;
+  try {
+    const order = await createMallOrder({ productId: state.currentProduct.id, quantity: 1 });
+    els.productDialog.close();
+    await payMallOrder(order.id);
+    showStatus(`付款成功，订单号：${order.id}`);
+    loadProducts();
+  } catch (error) {
+    showStatus(error.message || "下单失败，请稍后再试。");
+  }
+}
+
+async function orderFromCart(cartItemId) {
+  try {
+    const order = await createMallOrder({ cartItemId: Number(cartItemId) });
+    showStatus(`下单成功，订单号：${order.id}，可在我的订单里付款。`);
+    openCartDialog();
+  } catch (error) {
+    showStatus(error.message || "购物车下单失败，请检查库存。");
+  }
+}
+
+function renderOrders(orders) {
+  if (!orders.length) {
+    els.cartList.innerHTML = `<p class="empty-text">还没有商城订单。</p>`;
+    return;
+  }
+  els.cartList.innerHTML = orders.map(order => `
+    <article class="cart-item order-item">
+      <img src="${normalizeImage(order.productImage)}" alt="${escapeHtml(order.productTitle)}">
+      <div>
+        <strong>${escapeHtml(order.productTitle)}</strong>
+        <span>订单号 ${order.id}</span>
+        <small>¥${formatMoney(order.totalAmount)} · ${mallOrderStatus(order.status)}</small>
+      </div>
+      ${Number(order.status) === 1 ? `
+        <div class="cart-actions">
+          <button class="publish-button" type="button" data-order-pay="${order.id}">去支付</button>
+        </div>
+      ` : ""}
+    </article>
+  `).join("");
+  els.cartList.querySelectorAll("[data-order-pay]").forEach(button => {
+    button.addEventListener("click", () => payOrderFromList(button.dataset.orderPay));
+  });
+}
+
+async function payOrderFromList(orderId) {
+  try {
+    await payMallOrder(orderId);
+    showStatus(`付款成功，订单号：${orderId}`);
+    openOrdersDialog();
+  } catch (error) {
+    showStatus(error.message || "支付失败，请稍后再试。");
+  }
 }
 
 async function loadSmartRecommendation(question) {
@@ -1211,6 +1274,13 @@ function escapeHtml(value) {
 // ------------------------------
 els.searchForm.addEventListener("submit", event => {
   event.preventDefault();
+  if (state.mode === "mall") {
+    state.mallQuery = els.search.value.trim();
+    els.suggestPopover.classList.remove("is-open");
+    trackEvent("search", { scene: "mall", keyword: state.mallQuery });
+    loadProducts();
+    return;
+  }
   showContentArea();
   state.mode = "feed";
   state.query = els.search.value.trim();
@@ -1226,7 +1296,11 @@ els.search.addEventListener("input", () => {
   renderSuggestions(els.search.value);
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
-    if (state.mode === "mall") return;
+    if (state.mode === "mall") {
+      state.mallQuery = els.search.value.trim();
+      loadProducts();
+      return;
+    }
     state.mode = "feed";
     state.query = els.search.value.trim();
     resetAndLoad();
