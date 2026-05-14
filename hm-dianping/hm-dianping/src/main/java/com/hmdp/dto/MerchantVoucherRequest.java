@@ -1,0 +1,16 @@
+package com.hmdp.dto;
+
+import lombok.Data;
+
+/**
+ * 商家创建商城优惠券请求。
+ */
+@Data
+public class MerchantVoucherRequest {
+    private Long productId;
+    private String title;
+    private String subTitle;
+    private String rules;
+    private Long payValue;
+    private Long actualValue;
+}

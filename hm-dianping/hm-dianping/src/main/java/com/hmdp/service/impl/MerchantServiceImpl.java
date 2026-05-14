@@ -4,15 +4,18 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.MerchantProductRequest;
 import com.hmdp.dto.MerchantRequest;
+import com.hmdp.dto.MerchantVoucherRequest;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.MallOrder;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.Merchant;
+import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.MerchantMapper;
 import com.hmdp.service.IMallOrderService;
 import com.hmdp.service.IMallProductService;
 import com.hmdp.service.IMerchantService;
+import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.UserHolder;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
@@ -29,6 +32,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Resource
     private IMallOrderService orderService;
+
+    @Resource
+    private IVoucherService voucherService;
 
     @Override
     public Result mine() {
@@ -152,6 +158,39 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         }
         order.setStatus(3);
         return Result.ok(order);
+    }
+
+    @Override
+    public Result createVoucher(MerchantVoucherRequest request) {
+        Merchant merchant = currentMerchant();
+        if (merchant == null) {
+            return Result.fail("请先开通商家中心");
+        }
+        if (request == null || StrUtil.isBlank(request.getTitle())) {
+            return Result.fail("优惠券标题不能为空");
+        }
+        if (request.getPayValue() == null || request.getPayValue() < 0
+                || request.getActualValue() == null || request.getActualValue() <= 0) {
+            return Result.fail("优惠金额不正确");
+        }
+        if (request.getProductId() != null) {
+            MallProduct product = productService.getById(request.getProductId());
+            if (product == null || !merchant.getId().equals(product.getMerchantId())) {
+                return Result.fail("只能给自己的商品发券");
+            }
+        }
+        Voucher voucher = new Voucher()
+                .setMerchantId(merchant.getId())
+                .setProductId(request.getProductId())
+                .setTitle(request.getTitle())
+                .setSubTitle(request.getSubTitle())
+                .setRules(request.getRules())
+                .setPayValue(request.getPayValue())
+                .setActualValue(request.getActualValue())
+                .setType(0)
+                .setStatus(1);
+        voucherService.save(voucher);
+        return Result.ok(voucher);
     }
 
     private Result checkProduct(MerchantProductRequest request) {

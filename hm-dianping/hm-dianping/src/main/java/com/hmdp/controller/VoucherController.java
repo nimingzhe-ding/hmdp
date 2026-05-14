@@ -54,4 +54,9 @@ public class VoucherController {
     public Result queryVoucherOfShop(@PathVariable("shopId") Long shopId) {
        return voucherService.queryVoucherOfShop(shopId);
     }
+
+    @GetMapping("/mall/product/{productId}")
+    public Result queryMallVoucherOfProduct(@PathVariable("productId") Long productId) {
+        return voucherService.queryMallVoucherOfProduct(productId);
+    }
 }

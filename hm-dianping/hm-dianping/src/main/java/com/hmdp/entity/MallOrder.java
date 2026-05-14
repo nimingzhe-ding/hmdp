@@ -26,9 +26,11 @@ public class MallOrder implements Serializable {
     private Long userId;
     private Long merchantId;
     private Long productId;
+    private Long voucherId;
     private String productTitle;
     private String productImage;
     private Long price;
+    private Long discountAmount;
     private Integer quantity;
     private Long totalAmount;
     private Integer status;

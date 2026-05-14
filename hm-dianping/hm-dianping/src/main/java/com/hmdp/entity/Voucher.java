@@ -39,6 +39,16 @@ public class Voucher implements Serializable {
     private Long shopId;
 
     /**
+     * 商城商家id。为空时表示老的本地生活店铺券。
+     */
+    private Long merchantId;
+
+    /**
+     * 绑定商品id。为空时表示商家全店可用券。
+     */
+    private Long productId;
+
+    /**
      * 代金券标题
      */
     private String title;

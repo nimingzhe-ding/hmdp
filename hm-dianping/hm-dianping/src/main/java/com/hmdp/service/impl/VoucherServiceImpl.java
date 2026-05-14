@@ -2,9 +2,11 @@ package com.hmdp.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
+import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.VoucherMapper;
 import com.hmdp.entity.SeckillVoucher;
+import com.hmdp.service.IMallProductService;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.RedisConstants;
@@ -30,12 +32,32 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     private ISeckillVoucherService seckillVoucherService;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private IMallProductService productService;
 
     @Override
     public Result queryVoucherOfShop(Long shopId) {
         // 查询优惠券信息
         List<Voucher> vouchers = getBaseMapper().queryVoucherOfShop(shopId);
         // 返回结果
+        return Result.ok(vouchers);
+    }
+
+    @Override
+    public Result queryMallVoucherOfProduct(Long productId) {
+        if (productId == null) {
+            return Result.fail("商品ID不能为空");
+        }
+        MallProduct product = productService.getById(productId);
+        if (product == null || product.getMerchantId() == null) {
+            return Result.ok(List.of());
+        }
+        List<Voucher> vouchers = query()
+                .eq("status", 1)
+                .eq("merchant_id", product.getMerchantId())
+                .and(wrapper -> wrapper.eq("product_id", productId).or().isNull("product_id"))
+                .orderByDesc("actual_value")
+                .list();
         return Result.ok(vouchers);
     }
 

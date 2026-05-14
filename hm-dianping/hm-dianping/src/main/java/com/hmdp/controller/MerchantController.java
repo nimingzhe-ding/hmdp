@@ -2,6 +2,7 @@ package com.hmdp.controller;
 
 import com.hmdp.dto.MerchantProductRequest;
 import com.hmdp.dto.MerchantRequest;
+import com.hmdp.dto.MerchantVoucherRequest;
 import com.hmdp.dto.Result;
 import com.hmdp.service.IMerchantService;
 import jakarta.annotation.Resource;
@@ -57,5 +58,10 @@ public class MerchantController {
     @PostMapping("/orders/{id}/ship")
     public Result ship(@PathVariable("id") Long id) {
         return merchantService.shipOrder(id);
+    }
+
+    @PostMapping("/vouchers")
+    public Result createVoucher(@RequestBody MerchantVoucherRequest request) {
+        return merchantService.createVoucher(request);
     }
 }

@@ -16,5 +16,7 @@ public interface IVoucherService extends IService<Voucher> {
 
     Result queryVoucherOfShop(Long shopId);
 
+    Result queryMallVoucherOfProduct(Long productId);
+
     void addSeckillVoucher(Voucher voucher);
 }

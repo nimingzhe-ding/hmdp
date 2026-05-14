@@ -1337,9 +1337,31 @@ img {
   gap: 10px;
 }
 
-.merchant-section h3 {
+.merchant-section h3,
+.merchant-section-head h3 {
   margin: 0;
   font-size: 15px;
+}
+
+.merchant-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.merchant-voucher-form {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff8f9;
+  padding: 12px;
+}
+
+.mall-voucher-list {
+  margin: 4px 0 16px;
+}
+
+.mall-voucher-item {
+  background: #fff8f9;
 }
 
 .merchant-list {

@@ -10,5 +10,6 @@ import lombok.Data;
 public class MallOrderRequest {
     private Long productId;
     private Long cartItemId;
+    private Long voucherId;
     private Integer quantity;
 }

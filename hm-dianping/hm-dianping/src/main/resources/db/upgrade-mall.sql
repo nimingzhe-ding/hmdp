@@ -74,7 +74,14 @@ ALTER TABLE `tb_mall_product`
 
 ALTER TABLE `tb_mall_order`
   ADD COLUMN IF NOT EXISTS `merchant_id` bigint UNSIGNED NULL COMMENT '商家id' AFTER `user_id`,
+  ADD COLUMN IF NOT EXISTS `voucher_id` bigint UNSIGNED NULL COMMENT '优惠券id' AFTER `product_id`,
+  ADD COLUMN IF NOT EXISTS `discount_amount` bigint NOT NULL DEFAULT 0 COMMENT '优惠金额，单位分' AFTER `price`,
   ADD INDEX IF NOT EXISTS `idx_merchant_time` (`merchant_id`, `create_time`);
+
+ALTER TABLE `tb_voucher`
+  ADD COLUMN IF NOT EXISTS `merchant_id` bigint UNSIGNED NULL COMMENT '商城商家id' AFTER `shop_id`,
+  ADD COLUMN IF NOT EXISTS `product_id` bigint UNSIGNED NULL COMMENT '商城商品id' AFTER `merchant_id`,
+  ADD INDEX IF NOT EXISTS `idx_mall_voucher` (`merchant_id`, `product_id`, `status`);
 
 INSERT INTO `tb_merchant`
 (`id`, `user_id`, `name`, `avatar`, `description`, `phone`, `address`, `status`, `audit_status`)
@@ -102,3 +109,8 @@ SELECT 1, '拍照探店补光灯', '轻便折叠，适合美食和穿搭笔记',
 WHERE NOT EXISTS (SELECT 1 FROM `tb_mall_product` WHERE `title` = '拍照探店补光灯');
 
 UPDATE `tb_mall_product` SET `merchant_id` = 1 WHERE `merchant_id` IS NULL;
+
+INSERT INTO `tb_voucher`
+(`shop_id`, `merchant_id`, `product_id`, `title`, `sub_title`, `rules`, `pay_value`, `actual_value`, `type`, `status`)
+SELECT NULL, 1, NULL, '商城新人满50减10', '探店商城全店可用', '商城订单满50元可用，不与其他券叠加', 5000, 1000, 0, 1
+WHERE NOT EXISTS (SELECT 1 FROM `tb_voucher` WHERE `title` = '商城新人满50减10');

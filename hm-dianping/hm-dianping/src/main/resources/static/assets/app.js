@@ -16,6 +16,8 @@ const state = {
   merchant: null,
   merchantProducts: [],
   merchantOrders: [],
+  productVouchers: [],
+  selectedVoucherId: null,
   currentProduct: null,
   currentNote: null,
   currentUser: null,
@@ -53,6 +55,7 @@ const els = {
   cartDialog: document.querySelector("#cartDialog"),
   merchantDialog: document.querySelector("#merchantDialog"),
   voucherList: document.querySelector("#voucherList"),
+  mallVoucherList: document.querySelector("#mallVoucherList"),
   cartList: document.querySelector("#cartList"),
   merchantPanel: document.querySelector("#merchantPanel"),
   composerForm: document.querySelector("#composerForm"),
@@ -839,12 +842,52 @@ async function openProduct(productId) {
   }
   if (!product) return;
   state.currentProduct = product;
+  state.selectedVoucherId = null;
+  state.productVouchers = [];
   document.querySelector("#productDialogTitle").textContent = product.title;
   document.querySelector("#productDialogImage").src = normalizeImage(product.image);
   document.querySelector("#productDialogSub").textContent = product.subTitle;
   document.querySelector("#productDialogPrice").textContent = `¥${formatMoney(product.price)}`;
   document.querySelector("#productDialogStock").textContent = `库存 ${product.stock} · 已售 ${product.sold}`;
+  renderMallVouchers([]);
   els.productDialog.showModal();
+  loadMallVouchers(product.id);
+}
+
+async function loadMallVouchers(productId) {
+  try {
+    const vouchers = await request(`/voucher/mall/product/${productId}`);
+    state.productVouchers = Array.isArray(vouchers) ? vouchers : [];
+  } catch {
+    state.productVouchers = [];
+  }
+  renderMallVouchers(state.productVouchers);
+}
+
+function renderMallVouchers(vouchers) {
+  if (!els.mallVoucherList) return;
+  if (!vouchers.length) {
+    els.mallVoucherList.innerHTML = `<p class="empty-text">暂无可用商城券。</p>`;
+    return;
+  }
+  els.mallVoucherList.innerHTML = vouchers.map(voucher => `
+    <article class="voucher-item mall-voucher-item">
+      <div>
+        <strong>${escapeHtml(voucher.title || "商城优惠券")}</strong>
+        <span>${escapeHtml(voucher.subTitle || voucher.rules || "下单时自动抵扣")}</span>
+      </div>
+      <button type="button" data-mall-voucher="${voucher.id}">
+        ${state.selectedVoucherId === String(voucher.id) ? "已选择" : "选择"}
+        <small>满 ¥${formatMoney(voucher.payValue)} 减 ¥${formatMoney(voucher.actualValue)}</small>
+      </button>
+    </article>
+  `).join("");
+  els.mallVoucherList.querySelectorAll("[data-mall-voucher]").forEach(button => {
+    button.addEventListener("click", () => {
+      state.selectedVoucherId = state.selectedVoucherId === button.dataset.mallVoucher ? null : button.dataset.mallVoucher;
+      renderMallVouchers(state.productVouchers);
+    });
+  });
 }
 
 async function addCurrentProductToCart() {
@@ -867,7 +910,11 @@ async function addToCart(productId, quantity = 1) {
 async function buyCurrentProductNow() {
   if (!state.currentProduct || !requireLogin()) return;
   try {
-    const order = await createMallOrder({ productId: state.currentProduct.id, quantity: 1 });
+    const order = await createMallOrder({
+      productId: state.currentProduct.id,
+      quantity: 1,
+      voucherId: state.selectedVoucherId ? Number(state.selectedVoucherId) : null
+    });
     els.productDialog.close();
     showStatus(`下单成功，订单号：${order.id}`);
   } catch (error) {
@@ -965,7 +1012,7 @@ function renderOrders(orders) {
       <div>
         <strong>${escapeHtml(order.productTitle)}</strong>
         <span>订单号 ${order.id}</span>
-        <small>¥${formatMoney(order.totalAmount)} · ${mallOrderStatus(order.status)}</small>
+        <small>¥${formatMoney(order.totalAmount)} · 优惠 ¥${formatMoney(order.discountAmount)} · ${mallOrderStatus(order.status)}</small>
       </div>
     </article>
   `).join("");
@@ -991,7 +1038,7 @@ async function buyCurrentProductNow() {
     const order = await createMallOrder({ productId: state.currentProduct.id, quantity: 1 });
     els.productDialog.close();
     await payMallOrder(order.id);
-    showStatus(`付款成功，订单号：${order.id}`);
+    showStatus(`付款成功，实付 ¥${formatMoney(order.totalAmount)}，订单号：${order.id}`);
     loadProducts();
   } catch (error) {
     showStatus(error.message || "下单失败，请稍后再试。");
@@ -1145,6 +1192,25 @@ function renderMerchantDashboard() {
       </div>
       <button class="publish-button" type="submit">发布商品</button>
     </form>
+    <form class="merchant-form merchant-voucher-form" id="merchantVoucherForm">
+      <div class="merchant-section-head">
+        <h3>创建优惠券</h3>
+      </div>
+      <label>优惠券标题<input name="title" required maxlength="80" placeholder="比如：满50减10"></label>
+      <label>副标题<input name="subTitle" maxlength="120" placeholder="比如：商城全店可用"></label>
+      <div class="merchant-form-grid">
+        <label>使用门槛(元)<input name="payValueYuan" type="number" min="0" step="0.01" value="50"></label>
+        <label>优惠金额(元)<input name="actualValueYuan" type="number" min="0.01" step="0.01" value="10" required></label>
+        <label>绑定商品
+          <select name="productId">
+            <option value="">全店可用</option>
+            ${state.merchantProducts.map(product => `<option value="${product.id}">${escapeHtml(product.title)}</option>`).join("")}
+          </select>
+        </label>
+        <label>规则<input name="rules" placeholder="不与其他券叠加"></label>
+      </div>
+      <button class="ghost-button" type="submit">创建优惠券</button>
+    </form>
     <div class="merchant-section">
       <h3>我的商品</h3>
       <div class="merchant-list">${renderMerchantProducts()}</div>
@@ -1155,6 +1221,7 @@ function renderMerchantDashboard() {
     </div>
   `;
   document.querySelector("#merchantProductForm").addEventListener("submit", submitMerchantProduct);
+  document.querySelector("#merchantVoucherForm").addEventListener("submit", submitMerchantVoucher);
   els.merchantPanel.querySelectorAll("[data-product-toggle]").forEach(button => {
     button.addEventListener("click", () => toggleMerchantProduct(button.dataset.productToggle, button.dataset.nextStatus));
   });
@@ -1222,6 +1289,30 @@ async function submitMerchantProduct(event) {
     loadProducts();
   } catch (error) {
     showStatus(error.message || "商品发布失败。");
+  }
+}
+
+async function submitMerchantVoucher(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const productId = String(form.get("productId") || "").trim();
+  const payload = {
+    productId: productId ? Number(productId) : null,
+    title: String(form.get("title") || "").trim(),
+    subTitle: String(form.get("subTitle") || "").trim(),
+    rules: String(form.get("rules") || "").trim() || "商城订单可用，不与其他券叠加",
+    payValue: Math.round(Number(form.get("payValueYuan") || 0) * 100),
+    actualValue: Math.round(Number(form.get("actualValueYuan") || 0) * 100)
+  };
+  try {
+    await request("/merchant/vouchers", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    showStatus("商城优惠券已创建。");
+    event.currentTarget.reset();
+  } catch (error) {
+    showStatus(error.message || "优惠券创建失败。");
   }
 }
 
