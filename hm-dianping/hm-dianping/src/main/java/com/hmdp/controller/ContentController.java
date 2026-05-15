@@ -32,6 +32,13 @@ public class ContentController {
         return contentService.feed(channel, query, current);
     }
 
+    @GetMapping("/search")
+    public Result search(
+            @RequestParam("query") String query,
+            @RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return contentService.search(query, current);
+    }
+
     @GetMapping("/note/{id}")
     public Result detail(@PathVariable("id") Long blogId) {
         return contentService.detail(blogId);

@@ -20,6 +20,11 @@ public interface IContentService {
     Result feed(String channel, String query, Integer current);
 
     /**
+     * 统一搜索笔记、视频、商品、商家和话题。
+     */
+    Result search(String query, Integer current);
+
+    /**
      * 查询单篇笔记详情。
      */
     Result detail(Long blogId);

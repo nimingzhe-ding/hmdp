@@ -9,6 +9,7 @@ import com.hmdp.dto.ContentAiRequest;
 import com.hmdp.dto.ContentFeedResult;
 import com.hmdp.dto.ContentNoteDTO;
 import com.hmdp.dto.ContentProfileDTO;
+import com.hmdp.dto.ContentSearchResult;
 import com.hmdp.dto.ContentShopDTO;
 import com.hmdp.dto.ContentTrendDTO;
 import com.hmdp.dto.Result;
@@ -21,6 +22,7 @@ import com.hmdp.entity.NoteEvent;
 import com.hmdp.entity.Shop;
 import com.hmdp.entity.User;
 import com.hmdp.entity.Voucher;
+import com.hmdp.enums.ContentType;
 import com.hmdp.mapper.BlogProductMapper;
 import com.hmdp.mapper.NoteEventMapper;
 import com.hmdp.service.IBlogCollectService;
@@ -92,6 +94,29 @@ public class ContentServiceImpl implements IContentService {
         int pageNo = normalizePage(current);
         Page<Blog> page = buildFeedQuery(channel, query, pageNo);
         return Result.ok(toFeedResult(page, query));
+    }
+
+    @Override
+    public Result search(String query, Integer current) {
+        String keyword = StrUtil.trim(query);
+        if (StrUtil.isBlank(keyword)) {
+            return Result.fail("搜索词不能为空");
+        }
+        int pageNo = normalizePage(current);
+        Page<Blog> notePage = buildFeedQuery("hot", keyword, pageNo);
+        List<ContentNoteDTO> notes = toNoteDTOs(notePage.getRecords());
+        List<ContentNoteDTO> videos = notes.stream()
+                .filter(this::isVideoNote)
+                .toList();
+
+        ContentSearchResult result = new ContentSearchResult();
+        result.setQuery(keyword);
+        result.setNotes(notes);
+        result.setVideos(videos);
+        result.setProducts(searchProducts(keyword, pageNo));
+        result.setShops(searchShops(keyword, pageNo));
+        result.setTopics(searchTopics(keyword));
+        return Result.ok(result);
     }
 
     @Override
@@ -180,6 +205,10 @@ public class ContentServiceImpl implements IContentService {
 
     @Override
     public Result trends() {
+        return Result.ok(buildTrendList(10));
+    }
+
+    private List<ContentTrendDTO> buildTrendList(int limit) {
         Map<String, Long> trendMap = new LinkedHashMap<>();
 
         // 行为趋势：优先读取真实搜索词，让搜索建议能随着用户使用自然变化。
@@ -213,11 +242,10 @@ public class ContentServiceImpl implements IContentService {
         putTrend(trendMap, "一个人吃饭", 64L);
         putTrend(trendMap, "新店打卡", 58L);
 
-        List<ContentTrendDTO> trends = trendMap.entrySet().stream()
-                .limit(10)
+        return trendMap.entrySet().stream()
+                .limit(limit)
                 .map(entry -> new ContentTrendDTO(entry.getKey(), entry.getValue()))
                 .toList();
-        return Result.ok(trends);
     }
 
     @Override
@@ -293,6 +321,54 @@ public class ContentServiceImpl implements IContentService {
         List<ContentNoteDTO> list = toNoteDTOs(page.getRecords());
         boolean hasMore = page.getCurrent() < page.getPages();
         return new ContentFeedResult(list, page.getTotal(), hasMore, query);
+    }
+
+    private boolean isVideoNote(ContentNoteDTO note) {
+        if (note == null || StrUtil.isBlank(note.getVideoUrl())) {
+            return false;
+        }
+        String contentType = StrUtil.blankToDefault(note.getContentType(), "");
+        return ContentType.VIDEO.name().equals(contentType) || ContentType.LIVE.name().equals(contentType);
+    }
+
+    private List<MallProduct> searchProducts(String keyword, int pageNo) {
+        return mallProductService.query()
+                .eq("status", 1)
+                .and(wrapper -> wrapper.like("title", keyword)
+                        .or()
+                        .like("sub_title", keyword)
+                        .or()
+                        .like("category", keyword))
+                .orderByDesc("sold")
+                .orderByDesc("create_time")
+                .page(new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE))
+                .getRecords();
+    }
+
+    private List<Shop> searchShops(String keyword, int pageNo) {
+        return shopService.query()
+                .and(wrapper -> wrapper.like("name", keyword)
+                        .or()
+                        .like("area", keyword)
+                        .or()
+                        .like("address", keyword))
+                .orderByDesc("sold")
+                .orderByDesc("score")
+                .page(new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE))
+                .getRecords();
+    }
+
+    private List<ContentTrendDTO> searchTopics(String keyword) {
+        List<ContentTrendDTO> trends = buildTrendList(20);
+        List<ContentTrendDTO> matched = trends.stream()
+                .filter(trend -> StrUtil.isNotBlank(trend.getKeyword()))
+                .filter(trend -> trend.getKeyword().contains(keyword) || keyword.contains(trend.getKeyword()))
+                .limit(12)
+                .toList();
+        if (!matched.isEmpty()) {
+            return matched;
+        }
+        return List.of(new ContentTrendDTO(keyword, 1L));
     }
 
     private int normalizePage(Integer current) {

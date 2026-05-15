@@ -1989,26 +1989,43 @@ async function enterUnifiedSearch(query, preferredTab = "notes", loadAi = true) 
   els.unifiedSearchResults.innerHTML = `<p class="empty-text">正在搜索...</p>`;
   trackEvent("search", { scene: "unified", keyword });
 
-  const [notes, products, shops] = await Promise.all([
-    searchNotes(keyword),
-    searchProducts(keyword),
-    searchShops(keyword)
-  ]);
+  const results = await searchUnified(keyword);
   if (state.mode !== "search" || els.search.value.trim() !== keyword) {
     return;
   }
-  state.searchResults = {
-    notes,
-    videos: notes.filter(note => note.isVideo),
-    products,
-    shops,
-    topics: searchTopics(keyword)
-  };
+  state.searchResults = results;
   if (!state.searchResults[state.searchTab]?.length) {
     state.searchTab = ["notes", "videos", "products", "shops", "topics"].find(tab => state.searchResults[tab].length) || "notes";
   }
   renderUnifiedSearch();
   if (loadAi) loadSmartRecommendation(keyword);
+}
+
+async function searchUnified(keyword) {
+  try {
+    const params = new URLSearchParams({ current: "1", query: keyword });
+    const data = await request(`/content/search?${params.toString()}`);
+    return {
+      notes: Array.isArray(data?.notes) ? data.notes.map(normalizeNote) : [],
+      videos: Array.isArray(data?.videos) ? data.videos.map(normalizeNote) : [],
+      products: Array.isArray(data?.products) ? data.products.map(normalizeProduct) : [],
+      shops: Array.isArray(data?.shops) ? data.shops.map(normalizeShop) : [],
+      topics: Array.isArray(data?.topics) ? data.topics : []
+    };
+  } catch {
+    const [notes, products, shops] = await Promise.all([
+      searchNotes(keyword),
+      searchProducts(keyword),
+      searchShops(keyword)
+    ]);
+    return {
+      notes,
+      videos: notes.filter(note => note.isVideo),
+      products,
+      shops,
+      topics: searchTopics(keyword)
+    };
+  }
 }
 
 async function searchNotes(keyword) {
