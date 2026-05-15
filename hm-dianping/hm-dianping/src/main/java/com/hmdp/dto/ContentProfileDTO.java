@@ -11,6 +11,8 @@ public class ContentProfileDTO {
     private Long userId;
     private String nickName;
     private String icon;
+    private String introduce;
+    private String city;
     private Long notes;
     private Long likes;
     private Long collects;

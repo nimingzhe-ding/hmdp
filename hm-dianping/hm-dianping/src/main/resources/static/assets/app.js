@@ -27,6 +27,8 @@ const state = {
   selectedVoucherId: null,
   currentProduct: null,
   currentNote: null,
+  currentProfile: null,
+  profileTab: "works",
   currentUser: null,
   replyTarget: null,
   trends: [],
@@ -55,6 +57,11 @@ const els = {
   unifiedSearchSummary: document.querySelector("#unifiedSearchSummary"),
   unifiedSearchTabs: document.querySelector("#unifiedSearchTabs"),
   unifiedSearchResults: document.querySelector("#unifiedSearchResults"),
+  profileHome: document.querySelector("#profileHome"),
+  profileHomeResults: document.querySelector("#profileHomeResults"),
+  profileHomeTabs: document.querySelector("#profileHomeTabs"),
+  profileEditDialog: document.querySelector("#profileEditDialog"),
+  profileEditForm: document.querySelector("#profileEditForm"),
   contentArea: document.querySelector(".content-area"),
   mallArea: document.querySelector("#mallArea"),
   videoArea: document.querySelector("#videoArea"),
@@ -338,6 +345,7 @@ async function loadProfileStats() {
   if (!token()) return;
   try {
     const profile = await request("/content/profile");
+    state.currentProfile = profile;
     document.querySelector("#statNotes").textContent = profile.notes || 0;
     document.querySelector("#statLikes").textContent = profile.likes || 0;
     document.querySelector("#statCollects").textContent = profile.collects || 0;
@@ -345,6 +353,141 @@ async function loadProfileStats() {
     if (profile.icon) els.profileAvatar.src = normalizeImage(profile.icon);
   } catch {
     // 统计接口异常时保留当前用户基础信息，不影响浏览主流程。
+  }
+}
+
+async function openMyProfile(tab = "works") {
+  if (!requireLogin()) return;
+  showContentArea();
+  hideUnifiedSearch();
+  state.mode = "profile";
+  state.profileTab = tab;
+  els.feed.hidden = true;
+  els.loading.hidden = true;
+  els.smartCard.hidden = true;
+  els.profileHome.hidden = false;
+  els.profileHomeResults.innerHTML = `<p class="empty-text">正在加载主页...</p>`;
+  document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
+  try {
+    const profile = await request("/content/profile");
+    state.currentProfile = profile;
+    renderProfileHome(profile);
+    await loadProfileTab(tab);
+  } catch (error) {
+    els.profileHomeResults.innerHTML = `<p class="empty-text">${escapeHtml(error.message || "主页加载失败")}</p>`;
+  }
+}
+
+function renderProfileHome(profile) {
+  document.querySelector("#profileHomeAvatar").src = normalizeImage(profile.icon) || fallbackAvatar;
+  document.querySelector("#profileHomeName").textContent = profile.nickName || "探店用户";
+  document.querySelector("#profileHomeIntro").textContent = profile.introduce || "这个人还没有写简介。";
+  document.querySelector("#profileHomeMeta").textContent = `${profile.city || "城市未填写"} · ID ${profile.userId}`;
+  document.querySelector("#profileHomeWorks").textContent = profile.notes || 0;
+  document.querySelector("#profileHomeCollections").textContent = profile.collects || 0;
+  document.querySelector("#profileHomeLiked").textContent = profile.likes || 0;
+  document.querySelector("#profileHomeFollowing").textContent = profile.following || 0;
+  document.querySelector("#profileHomeFollowers").textContent = profile.followers || 0;
+  document.querySelector("#editProfileButton").hidden = !profile.isMe;
+  renderProfileTabs();
+}
+
+function renderProfileTabs() {
+  const tabs = [
+    ["works", "作品"],
+    ["collections", "收藏"],
+    ["liked", "点赞"],
+    ["following", "关注"],
+    ["followers", "粉丝"]
+  ];
+  els.profileHomeTabs.innerHTML = tabs.map(([key, label]) => `
+    <button type="button" class="${state.profileTab === key ? "is-active" : ""}" data-profile-tab="${key}">${label}</button>
+  `).join("");
+  els.profileHomeTabs.querySelectorAll("[data-profile-tab]").forEach(button => {
+    button.addEventListener("click", () => loadProfileTab(button.dataset.profileTab));
+  });
+}
+
+async function loadProfileTab(tab) {
+  state.profileTab = tab;
+  renderProfileTabs();
+  const userId = state.currentProfile?.userId || state.currentUser?.id;
+  if (!userId) return;
+  els.profileHomeResults.innerHTML = `<p class="empty-text">正在加载...</p>`;
+  if (["works", "collections", "liked"].includes(tab)) {
+    const path = tab === "works"
+      ? `/content/user/${userId}`
+      : `/content/user/${userId}/${tab}`;
+    const data = await request(`${path}?current=1`);
+    const notes = (Array.isArray(data?.list) ? data.list : []).map(normalizeNote);
+    renderProfileNotes(notes);
+    return;
+  }
+  const users = await request(`/content/user/${userId}/${tab}?current=1`);
+  renderProfileUsers(Array.isArray(users) ? users : []);
+}
+
+function renderProfileNotes(notes) {
+  if (!notes.length) {
+    els.profileHomeResults.innerHTML = `<p class="empty-text">这里暂时还没有内容。</p>`;
+    return;
+  }
+  const grid = document.createElement("div");
+  grid.className = "masonry-feed profile-note-results";
+  notes.forEach(note => grid.appendChild(createNoteCard(note)));
+  els.profileHomeResults.innerHTML = "";
+  els.profileHomeResults.appendChild(grid);
+}
+
+function renderProfileUsers(users) {
+  if (!users.length) {
+    els.profileHomeResults.innerHTML = `<p class="empty-text">这里暂时还没有用户。</p>`;
+    return;
+  }
+  els.profileHomeResults.innerHTML = `
+    <div class="profile-user-list">
+      ${users.map(user => `
+        <article class="profile-user-row">
+          <img src="${normalizeImage(user.icon) || fallbackAvatar}" alt="">
+          <span>
+            <strong>${escapeHtml(user.nickName || "探店用户")}</strong>
+            <small>ID ${user.id}</small>
+          </span>
+        </article>
+      `).join("")}
+    </div>`;
+}
+
+function openProfileEdit() {
+  const profile = state.currentProfile || {};
+  els.profileEditForm.elements.nickName.value = profile.nickName || "";
+  els.profileEditForm.elements.icon.value = profile.icon || "";
+  els.profileEditForm.elements.city.value = profile.city || "";
+  els.profileEditForm.elements.introduce.value = profile.introduce || "";
+  els.profileEditDialog.showModal();
+}
+
+async function submitProfileEdit(event) {
+  event.preventDefault();
+  const form = new FormData(els.profileEditForm);
+  try {
+    const profile = await request("/content/profile", {
+      method: "PUT",
+      body: JSON.stringify({
+        nickName: form.get("nickName"),
+        icon: form.get("icon"),
+        city: form.get("city"),
+        introduce: form.get("introduce")
+      })
+    });
+    state.currentProfile = profile;
+    renderProfileHome(profile);
+    state.currentUser = { ...(state.currentUser || {}), id: profile.userId, nickName: profile.nickName, icon: profile.icon };
+    renderUser(state.currentUser);
+    els.profileEditDialog.close();
+    showStatus("个人资料已更新。");
+  } catch (error) {
+    showStatus(error.message || "资料保存失败。");
   }
 }
 
@@ -1097,6 +1240,7 @@ async function submitComment(event) {
 // ------------------------------
 function resetAndLoad(clearStatus = true) {
   hideUnifiedSearch();
+  hideProfileHome();
   state.page = 1;
   state.hasMore = true;
   state.notes = [];
@@ -1108,6 +1252,13 @@ function resetAndLoad(clearStatus = true) {
 function hideUnifiedSearch() {
   if (!els.unifiedSearch) return;
   els.unifiedSearch.hidden = true;
+  els.feed.hidden = false;
+  els.loading.hidden = false;
+}
+
+function hideProfileHome() {
+  if (!els.profileHome) return;
+  els.profileHome.hidden = true;
   els.feed.hidden = false;
   els.loading.hidden = false;
 }
@@ -1973,6 +2124,7 @@ async function enterUnifiedSearch(query, preferredTab = "notes", loadAi = true) 
   }
   showContentArea();
   state.mode = "search";
+  hideProfileHome();
   document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
   state.query = keyword;
   state.mallQuery = keyword;
@@ -2396,8 +2548,14 @@ document.querySelector("#profileLogin").addEventListener("click", () => {
     els.loginDialog.showModal();
   }
 });
-document.querySelector("#showMyNotes").addEventListener("click", () => switchPersonalMode("mine"));
-document.querySelector("#showMyCollections").addEventListener("click", () => switchPersonalMode("collections"));
+document.querySelector("#showMyNotes").addEventListener("click", () => openMyProfile("works"));
+document.querySelector("#showMyCollections").addEventListener("click", () => openMyProfile("collections"));
+document.querySelector("#showMyLiked").addEventListener("click", () => openMyProfile("liked"));
+document.querySelector("#editProfileButton").addEventListener("click", openProfileEdit);
+els.profileEditForm.addEventListener("submit", submitProfileEdit);
+document.querySelectorAll(".profile-home-stats [data-profile-tab]").forEach(button => {
+  button.addEventListener("click", () => loadProfileTab(button.dataset.profileTab));
+});
 document.querySelector("#showDiscover").addEventListener("click", () => switchFeed("hot"));
 document.querySelector("#showWallet").addEventListener("click", showWallet);
 document.querySelector("#refreshTrends").addEventListener("click", loadTrends);
@@ -2418,7 +2576,7 @@ window.addEventListener("keydown", event => {
 });
 
 window.addEventListener("scroll", () => {
-  if (state.mode === "mall" || state.mode === "video" || state.mode === "search") return;
+  if (state.mode === "mall" || state.mode === "video" || state.mode === "search" || state.mode === "profile") return;
   const nearBottom = window.innerHeight + window.scrollY > document.body.offsetHeight - 620;
   if (nearBottom) loadNotes();
 }, { passive: true });

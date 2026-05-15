@@ -1,6 +1,7 @@
 package com.hmdp.service;
 
 import com.hmdp.dto.ContentAiRequest;
+import com.hmdp.dto.ContentProfileUpdateRequest;
 import com.hmdp.dto.Result;
 
 /**
@@ -40,14 +41,44 @@ public interface IContentService {
     Result collections(Integer current);
 
     /**
+     * 查询当前登录用户点赞过的笔记。
+     */
+    Result liked(Integer current);
+
+    /**
      * 查询指定用户主页的笔记流。
      */
     Result userNotes(Long userId, Integer current);
 
     /**
+     * 查询指定用户收藏的笔记。
+     */
+    Result userCollections(Long userId, Integer current);
+
+    /**
+     * 查询指定用户点赞过的笔记。
+     */
+    Result userLiked(Long userId, Integer current);
+
+    /**
+     * 查询指定用户关注的人。
+     */
+    Result following(Long userId, Integer current);
+
+    /**
+     * 查询指定用户的粉丝。
+     */
+    Result followers(Long userId, Integer current);
+
+    /**
      * 查询用户内容主页统计。
      */
     Result profile(Long userId);
+
+    /**
+     * 更新当前登录用户主页资料。
+     */
+    Result updateProfile(ContentProfileUpdateRequest request);
 
     /**
      * 查询搜索和内容趋势词。

@@ -1,11 +1,13 @@
 package com.hmdp.controller;
 
 import com.hmdp.dto.ContentAiRequest;
+import com.hmdp.dto.ContentProfileUpdateRequest;
 import com.hmdp.dto.Result;
 import com.hmdp.service.IContentService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -54,11 +56,44 @@ public class ContentController {
         return contentService.collections(current);
     }
 
+    @GetMapping("/liked")
+    public Result liked(@RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return contentService.liked(current);
+    }
+
     @GetMapping("/user/{id}")
     public Result userNotes(
             @PathVariable("id") Long userId,
             @RequestParam(value = "current", defaultValue = "1") Integer current) {
         return contentService.userNotes(userId, current);
+    }
+
+    @GetMapping("/user/{id}/collections")
+    public Result userCollections(
+            @PathVariable("id") Long userId,
+            @RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return contentService.userCollections(userId, current);
+    }
+
+    @GetMapping("/user/{id}/liked")
+    public Result userLiked(
+            @PathVariable("id") Long userId,
+            @RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return contentService.userLiked(userId, current);
+    }
+
+    @GetMapping("/user/{id}/following")
+    public Result following(
+            @PathVariable("id") Long userId,
+            @RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return contentService.following(userId, current);
+    }
+
+    @GetMapping("/user/{id}/followers")
+    public Result followers(
+            @PathVariable("id") Long userId,
+            @RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return contentService.followers(userId, current);
     }
 
     @GetMapping("/profile")
@@ -69,6 +104,11 @@ public class ContentController {
     @GetMapping("/profile/{id}")
     public Result profile(@PathVariable("id") Long userId) {
         return contentService.profile(userId);
+    }
+
+    @PutMapping("/profile")
+    public Result updateProfile(@RequestBody ContentProfileUpdateRequest request) {
+        return contentService.updateProfile(request);
     }
 
     @GetMapping("/trends")

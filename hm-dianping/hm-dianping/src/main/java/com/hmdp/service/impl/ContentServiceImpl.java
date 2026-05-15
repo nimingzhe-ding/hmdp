@@ -9,6 +9,7 @@ import com.hmdp.dto.ContentAiRequest;
 import com.hmdp.dto.ContentFeedResult;
 import com.hmdp.dto.ContentNoteDTO;
 import com.hmdp.dto.ContentProfileDTO;
+import com.hmdp.dto.ContentProfileUpdateRequest;
 import com.hmdp.dto.ContentSearchResult;
 import com.hmdp.dto.ContentShopDTO;
 import com.hmdp.dto.ContentTrendDTO;
@@ -17,10 +18,12 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogCollect;
 import com.hmdp.entity.BlogProduct;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.NoteEvent;
 import com.hmdp.entity.Shop;
 import com.hmdp.entity.User;
+import com.hmdp.entity.UserInfo;
 import com.hmdp.entity.Voucher;
 import com.hmdp.enums.ContentType;
 import com.hmdp.mapper.BlogProductMapper;
@@ -31,6 +34,7 @@ import com.hmdp.service.IContentService;
 import com.hmdp.service.IFollowService;
 import com.hmdp.service.IMallProductService;
 import com.hmdp.service.IShopService;
+import com.hmdp.service.IUserInfoService;
 import com.hmdp.service.IUserService;
 import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.SystemConstants;
@@ -61,6 +65,9 @@ public class ContentServiceImpl implements IContentService {
 
     @Resource
     private IUserService userService;
+
+    @Resource
+    private IUserInfoService userInfoService;
 
     @Resource
     private IShopService shopService;
@@ -146,17 +153,16 @@ public class ContentServiceImpl implements IContentService {
         if (user == null) {
             return Result.fail("请先登录");
         }
-        int pageNo = normalizePage(current);
-        Page<BlogCollect> collectPage = blogCollectService.query()
-                .eq("user_id", user.getId())
-                .orderByDesc("create_time")
-                .page(new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE));
-        List<Long> blogIds = collectPage.getRecords().stream()
-                .map(BlogCollect::getBlogId)
-                .toList();
-        List<ContentNoteDTO> notes = findNotesByIds(blogIds);
-        boolean hasMore = collectPage.getCurrent() < collectPage.getPages();
-        return Result.ok(new ContentFeedResult(notes, collectPage.getTotal(), hasMore, null));
+        return userCollections(user.getId(), current);
+    }
+
+    @Override
+    public Result liked(Integer current) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("请先登录");
+        }
+        return userLiked(user.getId(), current);
     }
 
     @Override
@@ -170,6 +176,70 @@ public class ContentServiceImpl implements IContentService {
                 .orderByDesc("create_time")
                 .page(new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE));
         return Result.ok(toFeedResult(page, null));
+    }
+
+    @Override
+    public Result userCollections(Long userId, Integer current) {
+        if (userId == null) {
+            return Result.fail("用户ID不能为空");
+        }
+        int pageNo = normalizePage(current);
+        Page<BlogCollect> collectPage = blogCollectService.query()
+                .eq("user_id", userId)
+                .orderByDesc("create_time")
+                .page(new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE));
+        List<Long> blogIds = collectPage.getRecords().stream()
+                .map(BlogCollect::getBlogId)
+                .toList();
+        List<ContentNoteDTO> notes = findNotesByIds(blogIds);
+        boolean hasMore = collectPage.getCurrent() < collectPage.getPages();
+        return Result.ok(new ContentFeedResult(notes, collectPage.getTotal(), hasMore, null));
+    }
+
+    @Override
+    public Result userLiked(Long userId, Integer current) {
+        if (userId == null) {
+            return Result.fail("用户ID不能为空");
+        }
+        List<Long> likedBlogIds = findLikedBlogIds(userId);
+        int pageNo = normalizePage(current);
+        int from = Math.min((pageNo - 1) * SystemConstants.MAX_PAGE_SIZE, likedBlogIds.size());
+        int to = Math.min(from + SystemConstants.MAX_PAGE_SIZE, likedBlogIds.size());
+        List<ContentNoteDTO> notes = findNotesByIds(likedBlogIds.subList(from, to));
+        boolean hasMore = to < likedBlogIds.size();
+        return Result.ok(new ContentFeedResult(notes, (long) likedBlogIds.size(), hasMore, null));
+    }
+
+    @Override
+    public Result following(Long userId, Integer current) {
+        if (userId == null) {
+            return Result.fail("用户ID不能为空");
+        }
+        int pageNo = normalizePage(current);
+        Page<Follow> page = followService.query()
+                .eq("user_id", userId)
+                .orderByDesc("create_time")
+                .page(new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE));
+        List<Long> userIds = page.getRecords().stream()
+                .map(Follow::getFollowUserId)
+                .toList();
+        return Result.ok(findUsersByIds(userIds), page.getTotal());
+    }
+
+    @Override
+    public Result followers(Long userId, Integer current) {
+        if (userId == null) {
+            return Result.fail("用户ID不能为空");
+        }
+        int pageNo = normalizePage(current);
+        Page<Follow> page = followService.query()
+                .eq("follow_user_id", userId)
+                .orderByDesc("create_time")
+                .page(new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE));
+        List<Long> userIds = page.getRecords().stream()
+                .map(Follow::getUserId)
+                .toList();
+        return Result.ok(findUsersByIds(userIds), page.getTotal());
     }
 
     @Override
@@ -190,9 +260,12 @@ public class ContentServiceImpl implements IContentService {
         profile.setUserId(user.getId());
         profile.setNickName(user.getNickName());
         profile.setIcon(user.getIcon());
+        UserInfo info = userInfoService.getById(user.getId());
+        profile.setIntroduce(info == null ? "" : info.getIntroduce());
+        profile.setCity(info == null ? "" : info.getCity());
         profile.setNotes(blogService.query().eq("user_id", user.getId()).count());
         profile.setLikes(sumUserLikes(user.getId()));
-        profile.setCollects(countUserReceivedCollects(user.getId()));
+        profile.setCollects(blogCollectService.query().eq("user_id", user.getId()).count());
         profile.setFollowers(followService.query().eq("follow_user_id", user.getId()).count());
         profile.setFollowing(followService.query().eq("user_id", user.getId()).count());
         profile.setIsMe(currentUser != null && currentUser.getId().equals(user.getId()));
@@ -201,6 +274,43 @@ public class ContentServiceImpl implements IContentService {
                 .eq("follow_user_id", user.getId())
                 .count() > 0);
         return Result.ok(profile);
+    }
+
+    @Override
+    public Result updateProfile(ContentProfileUpdateRequest request) {
+        UserDTO currentUser = UserHolder.getUser();
+        if (currentUser == null) {
+            return Result.fail("请先登录");
+        }
+        if (request == null) {
+            return Result.fail("资料不能为空");
+        }
+        User user = userService.getById(currentUser.getId());
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+        String nickName = StrUtil.trim(request.getNickName());
+        String icon = StrUtil.trim(request.getIcon());
+        if (StrUtil.isNotBlank(nickName)) {
+            user.setNickName(StrUtil.sub(nickName, 0, 30));
+        }
+        if (StrUtil.isNotBlank(icon)) {
+            user.setIcon(StrUtil.sub(icon, 0, 512));
+        }
+        userService.updateById(user);
+
+        UserInfo info = userInfoService.getById(currentUser.getId());
+        if (info == null) {
+            info = new UserInfo();
+            info.setUserId(currentUser.getId());
+        }
+        info.setIntroduce(StrUtil.sub(StrUtil.trimToEmpty(request.getIntroduce()), 0, 128));
+        info.setCity(StrUtil.sub(StrUtil.trimToEmpty(request.getCity()), 0, 32));
+        userInfoService.saveOrUpdate(info);
+
+        currentUser.setNickName(user.getNickName());
+        currentUser.setIcon(user.getIcon());
+        return profile(currentUser.getId());
     }
 
     @Override
@@ -396,6 +506,50 @@ public class ContentServiceImpl implements IContentService {
             }
         }
         return toNoteDTOs(orderedBlogs);
+    }
+
+    private List<Long> findLikedBlogIds(Long userId) {
+        Set<String> keys = stringRedisTemplate.keys("blog:liked:*");
+        if (keys == null || keys.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Double> likedMap = new LinkedHashMap<>();
+        for (String key : keys) {
+            Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
+            if (score == null) {
+                continue;
+            }
+            String blogIdText = StrUtil.removePrefix(key, "blog:liked:");
+            if (StrUtil.isBlank(blogIdText)) {
+                continue;
+            }
+            likedMap.put(Long.valueOf(blogIdText), score);
+        }
+        return likedMap.entrySet().stream()
+                .sorted((left, right) -> right.getValue().compareTo(left.getValue()))
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    private List<UserDTO> findUsersByIds(List<Long> userIds) {
+        if (userIds.isEmpty()) {
+            return List.of();
+        }
+        List<User> users = userService.listByIds(userIds);
+        Map<Long, User> userMap = users.stream()
+                .collect(Collectors.toMap(User::getId, Function.identity(), (first, second) -> first));
+        List<UserDTO> result = new ArrayList<>();
+        for (Long userId : userIds) {
+            User user = userMap.get(userId);
+            if (user != null) {
+                UserDTO dto = new UserDTO();
+                dto.setId(user.getId());
+                dto.setNickName(user.getNickName());
+                dto.setIcon(user.getIcon());
+                result.add(dto);
+            }
+        }
+        return result;
     }
 
     /**
