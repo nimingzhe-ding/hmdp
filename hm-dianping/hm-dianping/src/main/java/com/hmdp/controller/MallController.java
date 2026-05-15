@@ -66,13 +66,33 @@ public class MallController {
         return orderService.createOrder(request);
     }
 
+    @GetMapping("/orders")
+    public Result orders(@RequestParam(value = "status", required = false) Integer status) {
+        return orderService.listMine(status);
+    }
+
     @PostMapping("/orders/{id}/pay")
     public Result payOrder(@PathVariable("id") Long id) {
         return orderService.payOrder(id);
     }
 
-    @GetMapping("/orders")
-    public Result orders() {
-        return orderService.listMine();
+    @PostMapping("/orders/{id}/ship")
+    public Result shipOrder(@PathVariable("id") Long id) {
+        return orderService.shipOrder(id);
+    }
+
+    @PostMapping("/orders/{id}/receive")
+    public Result receiveOrder(@PathVariable("id") Long id) {
+        return orderService.receiveOrder(id);
+    }
+
+    @PostMapping("/orders/{id}/cancel")
+    public Result cancelOrder(@PathVariable("id") Long id) {
+        return orderService.cancelOrder(id);
+    }
+
+    @PostMapping("/orders/{id}/refund")
+    public Result refundOrder(@PathVariable("id") Long id) {
+        return orderService.refundOrder(id);
     }
 }

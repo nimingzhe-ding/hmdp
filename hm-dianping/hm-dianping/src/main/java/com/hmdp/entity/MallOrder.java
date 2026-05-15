@@ -33,7 +33,17 @@ public class MallOrder implements Serializable {
     private Long discountAmount;
     private Integer quantity;
     private Long totalAmount;
+
+    /**
+     * 订单状态。
+     * 1：待支付；2：已支付；3：待发货；4：已发货；5：已完成；6：已取消；7：退款中
+     */
     private Integer status;
+
     private LocalDateTime createTime;
+    private LocalDateTime payTime;
+    private LocalDateTime shipTime;
+    private LocalDateTime receiveTime;
+    private LocalDateTime cancelTime;
     private LocalDateTime updateTime;
 }

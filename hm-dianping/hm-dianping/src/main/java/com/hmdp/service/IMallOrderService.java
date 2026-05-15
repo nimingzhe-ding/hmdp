@@ -11,7 +11,15 @@ import com.hmdp.entity.MallOrder;
 public interface IMallOrderService extends IService<MallOrder> {
     Result createOrder(MallOrderRequest request);
 
-    Result listMine();
+    Result listMine(Integer status);
 
     Result payOrder(Long orderId);
+
+    Result shipOrder(Long orderId);
+
+    Result receiveOrder(Long orderId);
+
+    Result cancelOrder(Long orderId);
+
+    Result refundOrder(Long orderId);
 }
