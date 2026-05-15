@@ -19,6 +19,7 @@ public class ContentNoteDTO {
     private String images;
     private String videoUrl;
     private String contentType;
+    private String tags;
     private String content;
     private Integer liked;
     private Integer comments;
@@ -31,4 +32,6 @@ public class ContentNoteDTO {
     private LocalDateTime createTime;
     private ContentShopDTO shop;
     private List<MallProduct> products;
+    private CreatorGrowthDTO creatorGrowth;
+    private List<ContentNoteDTO> relatedNotes;
 }

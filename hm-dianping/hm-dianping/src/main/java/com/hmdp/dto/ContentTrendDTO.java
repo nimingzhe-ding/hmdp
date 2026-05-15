@@ -14,4 +14,11 @@ import lombok.NoArgsConstructor;
 public class ContentTrendDTO {
     private String keyword;
     private Long heat;
+    private Long noteCount;
+
+    public ContentTrendDTO(String keyword, Long heat) {
+        this.keyword = keyword;
+        this.heat = heat;
+        this.noteCount = 0L;
+    }
 }

@@ -20,4 +20,5 @@ public class ContentProfileDTO {
     private Long following;
     private Boolean isMe;
     private Boolean isFollow;
+    private CreatorGrowthDTO creatorGrowth;
 }

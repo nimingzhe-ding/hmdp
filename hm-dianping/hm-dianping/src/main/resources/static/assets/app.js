@@ -31,6 +31,7 @@ const state = {
   profileTab: "works",
   currentUser: null,
   replyTarget: null,
+  commentSort: "hot",
   trends: [],
   wallet: new Set(JSON.parse(localStorage.getItem("hmdp_wallet") || "[]")),
   collected: new Set(JSON.parse(localStorage.getItem("hmdp_collected") || "[]")),
@@ -69,11 +70,17 @@ const els = {
   drawer: document.querySelector("#detailDrawer"),
   drawerMedia: document.querySelector("#drawerMedia"),
   drawerThumbs: document.querySelector("#drawerThumbs"),
+  drawerAuthorGrowth: document.querySelector("#drawerAuthorGrowth"),
   noteProductBridge: document.querySelector("#noteProductBridge"),
   noteProductList: document.querySelector("#noteProductList"),
   noteProductCount: document.querySelector("#noteProductCount"),
+  noteRelated: document.querySelector("#noteRelated"),
+  noteRelatedList: document.querySelector("#noteRelatedList"),
   composer: document.querySelector("#composerDialog"),
   composerTitle: document.querySelector("#composerDialog h2"),
+  composerDraftBar: document.querySelector("#composerDraftBar"),
+  composerDraftText: document.querySelector("#composerDraftText"),
+  clearComposerDraft: document.querySelector("#clearComposerDraft"),
   shopDialog: document.querySelector("#shopDialog"),
   productDialog: document.querySelector("#productDialog"),
   cartDialog: document.querySelector("#cartDialog"),
@@ -240,6 +247,7 @@ async function request(url, options = {}) {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const result = await response.json();
   if (result.success === false) throw new Error(result.errorMsg || "请求失败");
+  if (options.raw) return result;
   return result.data;
 }
 
@@ -262,6 +270,9 @@ function normalizeNote(note, index = 0) {
     videoUrl,
     isVideo: ["VIDEO", "LIVE"].includes(contentType) && Boolean(videoUrl),
     products: Array.isArray(note.products) ? note.products.map(normalizeProduct) : [],
+    creatorGrowth: note.creatorGrowth || null,
+    relatedNotes: Array.isArray(note.relatedNotes) ? note.relatedNotes.map(item => normalizeNote(item)) : [],
+    tags: note.tags || "",
     ratio: [0.78, 1, 1.14, 1.28, 0.92][index % 5]
   };
 }
@@ -404,6 +415,7 @@ function renderProfileHome(profile) {
   document.querySelector("#profileHomeName").textContent = profile.nickName || "探店用户";
   document.querySelector("#profileHomeIntro").textContent = profile.introduce || "这个人还没有写简介。";
   document.querySelector("#profileHomeMeta").textContent = `${profile.city || "城市未填写"} · ID ${profile.userId}`;
+  renderCreatorGrowth(document.querySelector("#profileGrowth"), profile.creatorGrowth);
   document.querySelector("#profileHomeWorks").textContent = profile.notes || 0;
   document.querySelector("#profileHomeCollections").textContent = profile.collects || 0;
   document.querySelector("#profileHomeLiked").textContent = profile.likes || 0;
@@ -517,6 +529,16 @@ async function submitProfileEdit(event) {
 // Topic filters
 // ------------------------------
 async function loadCategories() {
+  renderCategories([
+    { id: "all", name: "推荐" },
+    { id: "food", name: "美食" },
+    { id: "fashion", name: "穿搭" },
+    { id: "travel", name: "旅行" },
+    { id: "digital", name: "数码" },
+    { id: "goods", name: "好物" },
+    { id: "shop", name: "探店" }
+  ]);
+  return;
   try {
     const data = await request("/shop-type/list");
     renderCategories([{ id: "all", name: "推荐" }, ...data.map(item => ({ id: item.id, name: item.name }))]);
@@ -663,16 +685,22 @@ async function openDrawer(note) {
   pauseFeedVideos();
   state.currentNote = note;
   state.replyTarget = null;
+  state.commentSort = "hot";
+  document.querySelectorAll("[data-comment-sort]").forEach(button => {
+    button.classList.toggle("is-active", button.dataset.commentSort === "hot");
+  });
   els.noteSmart.hidden = true;
   els.noteSmartText.textContent = "";
   renderDrawerImages(note);
   document.querySelector("#drawerAvatar").src = normalizeImage(note.icon);
   document.querySelector("#drawerAuthor").textContent = note.name;
   document.querySelector("#drawerTime").textContent = formatTime(note.createTime);
+  renderCreatorGrowth(els.drawerAuthorGrowth, note.creatorGrowth);
   document.querySelector("#drawerTitle").textContent = note.title;
   document.querySelector("#drawerContent").textContent = note.content || "这个作者还没有填写更多内容。";
   renderShopBridge(note.shop);
   renderNoteProducts(note.products);
+  renderRelatedNotes(note.relatedNotes || []);
   document.querySelector("#drawerLike").innerHTML = `♥ 赞 ${note.liked}`;
   if (note.isCollect) state.collected.add(String(note.id));
   if (note.isFollow) state.followed.add(String(note.userId));
@@ -747,6 +775,44 @@ function renderNoteProducts(products = []) {
     button.addEventListener("click", () => buyProductNow(button.dataset.noteProductBuy));
   });
   els.noteProductBridge.hidden = false;
+}
+
+function renderCreatorGrowth(target, growth) {
+  if (!target) return;
+  if (!growth) {
+    target.innerHTML = "";
+    return;
+  }
+  const badges = Array.isArray(growth.badges) ? growth.badges : [];
+  target.innerHTML = `
+    <span class="creator-level">${escapeHtml(growth.levelName || `Lv.${growth.level || 1}`)}</span>
+    ${growth.qualityCreator ? `<span class="creator-quality">优质创作者</span>` : ""}
+    <span>连续发布 ${growth.continuousPublishDays || 0} 天</span>
+    ${badges.map(badge => `<span>${escapeHtml(badge)}</span>`).join("")}
+  `;
+}
+
+function renderRelatedNotes(notes = []) {
+  const list = Array.isArray(notes) ? notes.map(normalizeNote).filter(note => note.id !== state.currentNote?.id) : [];
+  if (!list.length) {
+    els.noteRelated.hidden = true;
+    els.noteRelatedList.innerHTML = "";
+    return;
+  }
+  els.noteRelatedList.innerHTML = list.map(note => `
+    <button class="related-note" type="button" data-related-note="${note.id}">
+      <img src="${normalizeImage(note.image)}" alt="${escapeHtml(note.title)}">
+      <span>
+        <strong>${escapeHtml(note.title)}</strong>
+        <small>${escapeHtml(note.name || "探店用户")} · ${note.liked || 0} 赞</small>
+      </span>
+    </button>
+  `).join("");
+  els.noteRelatedList.querySelectorAll("[data-related-note]").forEach(button => {
+    const related = list.find(note => String(note.id) === String(button.dataset.relatedNote));
+    button.addEventListener("click", () => related && openDrawer(related));
+  });
+  els.noteRelated.hidden = false;
 }
 
 async function openShopDialog(shop) {
@@ -828,17 +894,26 @@ function formatMoney(value) {
 function renderDrawerImages(note) {
   if (note.isVideo && note.videoUrl) {
     els.drawerMedia.innerHTML = `
-      <video class="drawer-video" src="${normalizeMedia(note.videoUrl)}" poster="${normalizeImage(note.image)}" controls autoplay playsinline></video>
+      <video class="drawer-video" src="${normalizeMedia(note.videoUrl)}" poster="${normalizeImage(note.image)}" controls autoplay playsinline preload="metadata"></video>
     `;
     els.drawerThumbs.innerHTML = "";
     return;
   }
   const images = (note.images.length ? note.images : [note.image]).slice(0, 9);
+  let activeIndex = 0;
   const setActive = index => {
-    els.drawerMedia.innerHTML = `<img src="${normalizeImage(images[index])}" alt="${escapeHtml(note.title)}">`;
+    activeIndex = (index + images.length) % images.length;
+    els.drawerMedia.innerHTML = `
+      <button class="carousel-nav carousel-prev" type="button" aria-label="上一张">‹</button>
+      <img src="${normalizeImage(images[activeIndex])}" alt="${escapeHtml(note.title)}">
+      <button class="carousel-nav carousel-next" type="button" aria-label="下一张">›</button>
+      <span class="carousel-count">${activeIndex + 1}/${images.length}</span>
+    `;
     els.drawerThumbs.querySelectorAll("button").forEach((button, buttonIndex) => {
-      button.classList.toggle("is-active", buttonIndex === index);
+      button.classList.toggle("is-active", buttonIndex === activeIndex);
     });
+    els.drawerMedia.querySelector(".carousel-prev").addEventListener("click", () => setActive(activeIndex - 1));
+    els.drawerMedia.querySelector(".carousel-next").addEventListener("click", () => setActive(activeIndex + 1));
   };
   els.drawerThumbs.innerHTML = images.map((src, index) => `
     <button type="button" class="${index === 0 ? "is-active" : ""}" data-index="${index}">
@@ -1153,12 +1228,12 @@ async function toggleFollow(note) {
 async function loadComments(blogId) {
   els.commentList.innerHTML = `<p class="empty-text">正在加载评论...</p>`;
   try {
-    const data = await request(`/blog-comments/of/blog?blogId=${blogId}`);
-    const comments = Array.isArray(data) ? data : [];
-    els.commentCount.textContent = comments.length;
+    const result = await request(`/blog-comments/of/blog?blogId=${blogId}&sort=${state.commentSort}`, { raw: true });
+    const comments = Array.isArray(result.data) ? result.data : [];
+    updateCommentCount(result.total ?? comments.length);
     renderComments(comments);
   } catch {
-    els.commentCount.textContent = "0";
+    updateCommentCount(0);
     renderComments([]);
   }
 }
@@ -1179,6 +1254,7 @@ function renderComments(comments) {
           <button class="comment-like" type="button" data-comment-id="${comment.id}">♡ ${comment.liked || 0}</button>
           · <button class="comment-reply" type="button" data-comment-id="${comment.id}" data-parent-id="${comment.id}" data-name="${escapeHtml(comment.name || "探店用户")}">回复</button>
         </span>
+        <div class="comment-tools">${renderCommentActions(comment)}</div>
         ${renderReplies(comment.replies || [], comment.id)}
       </div>
     </article>
@@ -1188,6 +1264,12 @@ function renderComments(comments) {
   });
   els.commentList.querySelectorAll(".comment-reply").forEach(button => {
     button.addEventListener("click", () => startReply(button));
+  });
+  els.commentList.querySelectorAll("[data-comment-delete]").forEach(button => {
+    button.addEventListener("click", () => deleteComment(button.dataset.commentDelete));
+  });
+  els.commentList.querySelectorAll("[data-comment-report]").forEach(button => {
+    button.addEventListener("click", () => reportComment(button.dataset.commentReport));
   });
 }
 
@@ -1204,10 +1286,26 @@ function renderReplies(replies, rootId) {
             <button class="comment-like" type="button" data-comment-id="${reply.id}">♡ ${reply.liked || 0}</button>
             · <button class="comment-reply" type="button" data-comment-id="${reply.id}" data-parent-id="${rootId}" data-name="${escapeHtml(reply.name || "探店用户")}">回复</button>
           </span>
+          <div class="comment-tools">${renderCommentActions(reply)}</div>
         </article>
       `).join("")}
     </div>
   `;
+}
+
+function renderCommentActions(comment) {
+  if (comment.isOwner) {
+    return `<button class="comment-action" type="button" data-comment-delete="${comment.id}">删除</button>`;
+  }
+  return `<button class="comment-action" type="button" data-comment-report="${comment.id}">举报</button>`;
+}
+
+function updateCommentCount(count) {
+  const nextCount = Number(count || 0);
+  els.commentCount.textContent = nextCount;
+  if (state.currentNote) {
+    state.currentNote.comments = nextCount;
+  }
 }
 
 function startReply(button) {
@@ -1231,6 +1329,29 @@ async function likeComment(commentId) {
   }
 }
 
+async function deleteComment(commentId) {
+  if (!state.currentNote || !requireLogin()) return;
+  try {
+    const data = await request(`/blog-comments/${commentId}`, { method: "DELETE" });
+    updateCommentCount(data?.comments);
+    loadComments(state.currentNote.id);
+  } catch {
+    showStatus("删除评论失败，请稍后再试。");
+  }
+}
+
+async function reportComment(commentId) {
+  if (!state.currentNote || !requireLogin()) return;
+  try {
+    const data = await request(`/blog-comments/report/${commentId}`, { method: "PUT" });
+    updateCommentCount(data?.comments);
+    loadComments(state.currentNote.id);
+    showStatus("已提交举报。");
+  } catch {
+    showStatus("举报失败，请稍后再试。");
+  }
+}
+
 async function submitComment(event) {
   event.preventDefault();
   if (!state.currentNote || !requireLogin()) return;
@@ -1243,11 +1364,12 @@ async function submitComment(event) {
       parentId: state.replyTarget?.parentId || 0,
       answerId: state.replyTarget?.answerId || 0
     };
-    await request("/blog-comments", {
+    const data = await request("/blog-comments", {
       method: "POST",
       body: JSON.stringify(payload)
     });
     trackEvent("comment", { blogId: state.currentNote.id, scene: "detail" });
+    updateCommentCount(data?.comments);
     state.replyTarget = null;
     els.commentInput.value = "";
     els.commentInput.placeholder = "说点什么...";
@@ -1981,8 +2103,107 @@ function showWallet() {
 // ------------------------------
 // 发布流程：按内容类型上传素材并提交笔记
 // ------------------------------
+const COMPOSER_DRAFT_KEY = "hmdp_composer_draft";
+
 function getComposerContentType() {
   return normalizeContentType(els.composerForm.elements.contentType?.value, "");
+}
+
+function readComposerDraft() {
+  try {
+    return JSON.parse(localStorage.getItem(COMPOSER_DRAFT_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function hasComposerDraft(draft = readComposerDraft()) {
+  if (!draft) return false;
+  return ["title", "images", "videoUrl", "shopId", "productIds", "topics", "content"]
+    .some(key => String(draft[key] || "").trim());
+}
+
+function collectComposerDraft() {
+  const form = els.composerForm.elements;
+  return {
+    contentType: getComposerContentType(),
+    title: form.title?.value || "",
+    images: form.images?.value || "",
+    videoUrl: form.videoUrl?.value || "",
+    shopId: form.shopId?.value || "",
+    productIds: form.productIds?.value || "",
+    tags: form.tags?.value || "",
+    topics: form.topics?.value || "",
+    content: form.content?.value || "",
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function saveComposerDraft(showTip = false) {
+  const draft = collectComposerDraft();
+  if (!hasComposerDraft(draft)) {
+    localStorage.removeItem(COMPOSER_DRAFT_KEY);
+    renderComposerDraftState();
+    return;
+  }
+  localStorage.setItem(COMPOSER_DRAFT_KEY, JSON.stringify(draft));
+  renderComposerDraftState(showTip ? "草稿已保存，发布失败也不会丢。" : "");
+}
+
+function restoreComposerDraft() {
+  const draft = readComposerDraft();
+  if (!hasComposerDraft(draft)) {
+    renderComposerDraftState();
+    return false;
+  }
+  const form = els.composerForm.elements;
+  if (draft.contentType && form.contentType) {
+    const typeInput = [...els.contentTypeInputs].find(input => input.value === draft.contentType);
+    if (typeInput) typeInput.checked = true;
+  }
+  ["title", "images", "videoUrl", "shopId", "productIds", "tags", "topics", "content"].forEach(name => {
+    if (form[name] && draft[name] != null) {
+      form[name].value = draft[name];
+    }
+  });
+  applyComposerType();
+  renderComposerDraftState("已恢复上次未发布的草稿。");
+  return true;
+}
+
+function clearComposerDraft(resetForm = false) {
+  localStorage.removeItem(COMPOSER_DRAFT_KEY);
+  if (resetForm) {
+    els.composerForm.reset();
+    els.uploadPreview.innerHTML = "";
+    els.videoPreview.innerHTML = "";
+    applyComposerType();
+  }
+  renderComposerDraftState();
+}
+
+function renderComposerDraftState(message = "") {
+  if (!els.composerDraftBar) return;
+  const draft = readComposerDraft();
+  const hasDraft = hasComposerDraft(draft);
+  els.composerDraftBar.hidden = !hasDraft;
+  if (hasDraft && els.composerDraftText) {
+    const time = draft.updatedAt ? new Date(draft.updatedAt).toLocaleString("zh-CN", { hour12: false }) : "";
+    els.composerDraftText.textContent = message || (time ? `草稿已保存 ${time}` : "草稿已自动保存");
+  }
+}
+
+function appendComposerImageUrls(urls) {
+  if (!urls.length) return;
+  const input = els.composerForm.elements.images;
+  const existed = String(input.value || "").split(",").map(item => item.trim()).filter(Boolean);
+  input.value = [...new Set([...existed, ...urls])].join(",");
+}
+
+function setComposerVideoUrl(url) {
+  if (!url) return;
+  const input = els.composerForm.elements.videoUrl;
+  input.value = url;
 }
 
 function applyComposerType() {
@@ -2052,6 +2273,7 @@ async function uploadSelectedVideo() {
 async function submitComposer(event) {
   event.preventDefault();
   if (!requireLogin()) return;
+  saveComposerDraft();
   const submitButton = els.composerForm.querySelector(".publish-button");
   submitButton.disabled = true;
   submitButton.textContent = "发布中";
@@ -2062,41 +2284,51 @@ async function submitComposer(event) {
     const isProductNote = contentType === "PRODUCT_NOTE";
     const uploaded = await uploadSelectedImages();
     const uploadedVideo = isVideoLike ? await uploadSelectedVideo() : "";
-    const manualImages = String(form.get("images") || "").trim();
-    const videoUrl = isVideoLike ? uploadedVideo || String(form.get("videoUrl") || "").trim() : "";
+    appendComposerImageUrls(uploaded);
+    setComposerVideoUrl(uploadedVideo);
+    saveComposerDraft();
+    const manualImages = String(els.composerForm.elements.images?.value || "").trim();
+    const videoUrl = isVideoLike ? String(els.composerForm.elements.videoUrl?.value || "").trim() : "";
     const shopId = isProductNote && form.get("shopId") ? Number(form.get("shopId")) : null;
     const productIds = parseProductIds(form.get("productIds"));
     const content = String(form.get("content") || "").trim();
     if (isVideoLike && !videoUrl) {
       showStatus(contentType === "LIVE" ? "直播预告需要填写直播地址或上传预告视频。" : "视频内容需要上传视频或填写视频地址。");
+      saveComposerDraft(true);
       return;
     }
     if (!uploaded.length && !manualImages && !videoUrl) {
       showStatus("发布笔记至少需要一张图片。");
+      saveComposerDraft(true);
       return;
     }
     if (isProductNote && !shopId) {
       showStatus("商品种草需要关联店铺 ID。");
+      saveComposerDraft(true);
       return;
     }
     if (isProductNote && !productIds.length) {
       showStatus("商品种草至少需要挂载一个商品。");
+      saveComposerDraft(true);
       return;
     }
     if (content.length < 12) {
       showStatus("正文再多写一点，会更像一篇有价值的探店笔记。");
+      saveComposerDraft(true);
       return;
     }
     const payload = {
       title: form.get("title"),
-      images: uploaded.length ? uploaded.join(",") : manualImages,
+      images: manualImages,
       videoUrl,
       contentType,
       shopId,
       productIds,
+      tags: form.get("tags"),
       content: mergeTopics(content, form.get("topics"))
     };
     await request("/blog", { method: "POST", body: JSON.stringify(payload) });
+    clearComposerDraft();
     els.composer.close();
     els.composerForm.reset();
     els.uploadPreview.innerHTML = "";
@@ -2104,7 +2336,8 @@ async function submitComposer(event) {
     applyComposerType();
     resetAndLoad();
   } catch {
-    showStatus("发布失败，请确认已登录，且图片、店铺信息有效。");
+    saveComposerDraft(true);
+    showStatus("发布失败，内容已保存到草稿箱。请确认已登录，且图片、店铺信息有效。");
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "发布";
@@ -2474,22 +2707,36 @@ els.imageFiles.addEventListener("change", () => {
     const url = URL.createObjectURL(file);
     return `<img src="${url}" alt="">`;
   }).join("");
+  saveComposerDraft();
 });
 
 els.videoFile.addEventListener("change", () => {
   const file = els.videoFile.files[0];
   if (!file) {
     els.videoPreview.innerHTML = "";
+    saveComposerDraft();
     return;
   }
   const url = URL.createObjectURL(file);
   els.videoPreview.innerHTML = `<video src="${url}" controls muted playsinline></video>`;
+  saveComposerDraft();
 });
 
 els.contentTypeInputs.forEach(input => {
-  input.addEventListener("change", applyComposerType);
+  input.addEventListener("change", () => {
+    applyComposerType();
+    saveComposerDraft();
+  });
 });
 applyComposerType();
+renderComposerDraftState();
+
+els.composerForm.addEventListener("input", () => saveComposerDraft());
+els.composerForm.addEventListener("change", () => saveComposerDraft());
+els.clearComposerDraft?.addEventListener("click", () => {
+  clearComposerDraft(true);
+  showStatus("草稿已清空。");
+});
 
 document.querySelectorAll("[data-feed]").forEach(button => {
   button.addEventListener("click", () => switchFeed(button.dataset.feed));
@@ -2506,7 +2753,9 @@ document.querySelectorAll("[data-smart-query]").forEach(button => {
 document.querySelectorAll("[data-close-drawer]").forEach(item => item.addEventListener("click", closeDrawer));
 function openComposer() {
   if (!requireLogin()) return;
-  applyComposerType();
+  if (!restoreComposerDraft()) {
+    applyComposerType();
+  }
   els.composer.showModal();
 }
 
@@ -2544,6 +2793,15 @@ document.querySelector("#sendCodeButton").addEventListener("click", sendCode);
 els.composerForm.addEventListener("submit", submitComposer);
 els.loginForm.addEventListener("submit", submitLogin);
 els.commentForm.addEventListener("submit", submitComment);
+document.querySelectorAll("[data-comment-sort]").forEach(button => {
+  button.addEventListener("click", () => {
+    state.commentSort = button.dataset.commentSort || "hot";
+    document.querySelectorAll("[data-comment-sort]").forEach(item => {
+      item.classList.toggle("is-active", item === button);
+    });
+    if (state.currentNote) loadComments(state.currentNote.id);
+  });
+});
 
 window.addEventListener("keydown", event => {
   if (event.key === "Escape") {

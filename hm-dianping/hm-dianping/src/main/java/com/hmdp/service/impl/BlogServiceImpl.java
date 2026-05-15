@@ -11,6 +11,7 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogLike;
 import com.hmdp.entity.BlogProduct;
+import com.hmdp.entity.ContentTopic;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.User;
@@ -18,6 +19,7 @@ import com.hmdp.enums.ContentType;
 import com.hmdp.mapper.BlogLikeMapper;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.mapper.BlogProductMapper;
+import com.hmdp.mapper.ContentTopicMapper;
 import com.hmdp.mapper.MallProductMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -36,6 +38,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.springframework.data.redis.connection.RedisListCommands.Direction.last;
 
@@ -61,6 +65,10 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private MallProductMapper mallProductMapper;
     @Resource
     private BlogLikeMapper blogLikeMapper;
+    @Resource
+    private ContentTopicMapper contentTopicMapper;
+
+    private static final Pattern TOPIC_PATTERN = Pattern.compile("#([\\p{IsHan}\\w\\-]{1,30})");
 
     /**
      * 保存博文
@@ -82,6 +90,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             return Result.fail("挂载商品不存在或未上架");
         }
         blog.setContentType(contentType);
+        blog.setTags(normalizeTags(blog.getTags()));
         //获取登录用户
         Long id = UserHolder.getUser().getId();
         //保存博文
@@ -92,6 +101,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             return Result.fail("新增博文失败！");
         }
         saveBlogProducts(blog.getId(), productIds);
+        syncBlogTopics(blog.getContent());
         List<Follow> follows = followService.query().eq("follow_user_id", id).list();
         //推送粉丝
         for (Follow follow : follows) {
@@ -112,6 +122,44 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 .distinct()
                 .limit(6)
                 .toList();
+    }
+
+    private String normalizeTags(String tags) {
+        if (StrUtil.isBlank(tags)) {
+            return "";
+        }
+        return StrUtil.split(tags, ',')
+                .stream()
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .limit(6)
+                .collect(Collectors.joining(","));
+    }
+
+    private void syncBlogTopics(String content) {
+        if (StrUtil.isBlank(content)) {
+            return;
+        }
+        Matcher matcher = TOPIC_PATTERN.matcher(content);
+        Set<String> topics = new java.util.LinkedHashSet<>();
+        while (matcher.find()) {
+            topics.add(matcher.group(1));
+        }
+        for (String keyword : topics) {
+            ContentTopic topic = contentTopicMapper.selectOne(new QueryWrapper<ContentTopic>().eq("keyword", keyword).last("limit 1"));
+            if (topic == null) {
+                contentTopicMapper.insert(new ContentTopic()
+                        .setKeyword(keyword)
+                        .setHeat(1L)
+                        .setNoteCount(1L));
+            } else {
+                contentTopicMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ContentTopic>()
+                        .setSql("heat = IFNULL(heat, 0) + 1")
+                        .setSql("note_count = IFNULL(note_count, 0) + 1")
+                        .eq("id", topic.getId()));
+            }
+        }
     }
 
     private void saveBlogProducts(Long blogId, List<Long> productIds) {

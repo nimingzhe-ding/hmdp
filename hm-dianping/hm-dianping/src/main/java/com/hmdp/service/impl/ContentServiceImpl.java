@@ -13,12 +13,14 @@ import com.hmdp.dto.ContentProfileUpdateRequest;
 import com.hmdp.dto.ContentSearchResult;
 import com.hmdp.dto.ContentShopDTO;
 import com.hmdp.dto.ContentTrendDTO;
+import com.hmdp.dto.CreatorGrowthDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogCollect;
 import com.hmdp.entity.BlogLike;
 import com.hmdp.entity.BlogProduct;
+import com.hmdp.entity.ContentTopic;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.NoteEvent;
@@ -29,6 +31,7 @@ import com.hmdp.entity.Voucher;
 import com.hmdp.enums.ContentType;
 import com.hmdp.mapper.BlogLikeMapper;
 import com.hmdp.mapper.BlogProductMapper;
+import com.hmdp.mapper.ContentTopicMapper;
 import com.hmdp.mapper.NoteEventMapper;
 import com.hmdp.service.IBlogCollectService;
 import com.hmdp.service.IBlogService;
@@ -46,6 +49,7 @@ import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -99,6 +103,9 @@ public class ContentServiceImpl implements IContentService {
     private NoteEventMapper noteEventMapper;
 
     @Resource
+    private ContentTopicMapper contentTopicMapper;
+
+    @Resource
     private AiAssistantService aiAssistantService;
 
     @Override
@@ -140,7 +147,10 @@ public class ContentServiceImpl implements IContentService {
         if (blog == null) {
             return Result.fail("笔记不存在");
         }
-        return Result.ok(toNoteDTO(blog));
+        ContentNoteDTO note = toNoteDTO(blog);
+        note.setCreatorGrowth(buildCreatorGrowth(blog.getUserId()));
+        note.setRelatedNotes(findRelatedNotes(blog));
+        return Result.ok(note);
     }
 
     @Override
@@ -278,6 +288,7 @@ public class ContentServiceImpl implements IContentService {
                 .eq("user_id", currentUser.getId())
                 .eq("follow_user_id", user.getId())
                 .count() > 0);
+        profile.setCreatorGrowth(buildCreatorGrowth(user.getId()));
         return Result.ok(profile);
     }
 
@@ -325,6 +336,18 @@ public class ContentServiceImpl implements IContentService {
 
     private List<ContentTrendDTO> buildTrendList(int limit) {
         Map<String, Long> trendMap = new LinkedHashMap<>();
+        Map<String, Long> noteCountMap = new HashMap<>();
+
+        // 话题趋势：优先读取独立话题表，避免每次从正文临时解析。
+        List<ContentTopic> topics = contentTopicMapper.selectList(
+                new QueryWrapper<ContentTopic>()
+                        .orderByDesc("heat")
+                        .orderByDesc("note_count")
+                        .last("limit " + Math.max(limit, 10)));
+        for (ContentTopic topic : topics) {
+            putTrend(trendMap, topic.getKeyword(), topic.getHeat());
+            noteCountMap.put(topic.getKeyword(), topic.getNoteCount() == null ? 0L : topic.getNoteCount());
+        }
 
         // 行为趋势：优先读取真实搜索词，让搜索建议能随着用户使用自然变化。
         List<Map<String, Object>> searchedKeywords = noteEventMapper.selectMaps(
@@ -359,7 +382,7 @@ public class ContentServiceImpl implements IContentService {
 
         return trendMap.entrySet().stream()
                 .limit(limit)
-                .map(entry -> new ContentTrendDTO(entry.getKey(), entry.getValue()))
+                .map(entry -> new ContentTrendDTO(entry.getKey(), entry.getValue(), noteCountMap.getOrDefault(entry.getKey(), 0L)))
                 .toList();
     }
 
@@ -404,7 +427,7 @@ public class ContentServiceImpl implements IContentService {
         Page<Blog> page = new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE);
         var wrapper = blogService.query();
         if (StrUtil.isNotBlank(query)) {
-            wrapper.and(w -> w.like("title", query).or().like("content", query));
+            wrapper.and(w -> w.like("title", query).or().like("content", query).or().like("tags", query));
         }
         if ("follow".equals(normalizedChannel)) {
             UserDTO user = UserHolder.getUser();
@@ -422,10 +445,20 @@ public class ContentServiceImpl implements IContentService {
             }
             wrapper.in("user_id", followUserIds);
         }
+        if ("video".equals(normalizedChannel)) {
+            wrapper.in("content_type", ContentType.VIDEO.name(), ContentType.LIVE.name());
+        }
+        if ("mall".equals(normalizedChannel)) {
+            wrapper.and(w -> w.eq("content_type", ContentType.PRODUCT_NOTE.name())
+                    .or()
+                    .inSql("id", "select blog_id from tb_blog_product"));
+        }
         if ("hot".equals(normalizedChannel)) {
             wrapper.last("ORDER BY (IFNULL(liked, 0) * 3 + IFNULL(comments, 0) * 2 + " +
                     "(SELECT COUNT(1) FROM tb_blog_collect c WHERE c.blog_id = tb_blog.id) * 4 + " +
                     "GREATEST(0, 72 - TIMESTAMPDIFF(HOUR, create_time, NOW()))) DESC, create_time DESC");
+        } else if ("nearby".equals(normalizedChannel)) {
+            wrapper.last("ORDER BY CASE WHEN shop_id IS NULL THEN 1 ELSE 0 END ASC, create_time DESC");
         } else {
             wrapper.orderByDesc("create_time");
         }
@@ -444,6 +477,49 @@ public class ContentServiceImpl implements IContentService {
         }
         String contentType = StrUtil.blankToDefault(note.getContentType(), "");
         return ContentType.VIDEO.name().equals(contentType) || ContentType.LIVE.name().equals(contentType);
+    }
+
+    private List<ContentNoteDTO> findRelatedNotes(Blog source) {
+        if (source == null || source.getId() == null) {
+            return List.of();
+        }
+        QueryWrapper<Blog> wrapper = new QueryWrapper<Blog>()
+                .ne("id", source.getId());
+        List<String> tags = splitTags(source.getTags());
+        if (!tags.isEmpty() || StrUtil.isNotBlank(source.getContentType()) || source.getShopId() != null) {
+            wrapper.and(w -> {
+                int[] conditionCount = {0};
+                for (String tag : tags) {
+                    if (conditionCount[0]++ > 0) w.or();
+                    w.like("tags", tag);
+                }
+                if (StrUtil.isNotBlank(source.getContentType())) {
+                    if (conditionCount[0]++ > 0) w.or();
+                    w.eq("content_type", source.getContentType());
+                }
+                if (source.getShopId() != null) {
+                    if (conditionCount[0] > 0) w.or();
+                    w.eq("shop_id", source.getShopId());
+                }
+            });
+        }
+        wrapper.last("ORDER BY (IFNULL(liked, 0) * 3 + IFNULL(comments, 0) * 2 + " +
+                "GREATEST(0, 168 - TIMESTAMPDIFF(HOUR, create_time, NOW()))) DESC, create_time DESC LIMIT 6");
+        List<Blog> related = blogService.getBaseMapper().selectList(wrapper);
+        return toNoteDTOs(related);
+    }
+
+    private List<String> splitTags(String tags) {
+        if (StrUtil.isBlank(tags)) {
+            return List.of();
+        }
+        return StrUtil.split(tags, ',')
+                .stream()
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .limit(6)
+                .toList();
     }
 
     private List<MallProduct> searchProducts(String keyword, int pageNo) {
@@ -599,6 +675,7 @@ public class ContentServiceImpl implements IContentService {
         dto.setImages(blog.getImages());
         dto.setVideoUrl(blog.getVideoUrl());
         dto.setContentType(blog.getContentType());
+        dto.setTags(blog.getTags());
         dto.setContent(blog.getContent());
         dto.setLiked(blog.getLiked() == null ? 0 : blog.getLiked());
         dto.setComments(blog.getComments() == null ? 0 : blog.getComments());
@@ -765,6 +842,91 @@ public class ContentServiceImpl implements IContentService {
             return 0L;
         }
         return blogCollectService.query().in("blog_id", blogIds).count();
+    }
+
+    private CreatorGrowthDTO buildCreatorGrowth(Long userId) {
+        CreatorGrowthDTO growth = new CreatorGrowthDTO();
+        if (userId == null) {
+            growth.setLevel(1);
+            growth.setLevelName("Lv.1 新锐创作者");
+            growth.setScore(0L);
+            growth.setContinuousPublishDays(0);
+            growth.setQualityCreator(false);
+            growth.setBadges(List.of("新锐创作者"));
+            return growth;
+        }
+        List<Blog> blogs = blogService.query()
+                .eq("user_id", userId)
+                .orderByDesc("create_time")
+                .list();
+        long notes = blogs.size();
+        long likes = blogs.stream().map(Blog::getLiked).mapToLong(value -> value == null ? 0L : value).sum();
+        long collects = countUserReceivedCollects(userId);
+        long followers = followService.query().eq("follow_user_id", userId).count();
+        int streak = countPublishStreak(blogs);
+        long score = notes * 20 + likes * 2 + collects * 3 + followers * 5 + streak * 15;
+        int level = Math.max(1, Math.min(9, (int) (score / 120) + 1));
+        boolean qualityCreator = notes >= 5 && (likes >= 100 || followers >= 10 || collects >= 20);
+        List<String> badges = buildCreatorBadges(blogs, likes, collects, followers, streak, qualityCreator);
+
+        growth.setLevel(level);
+        growth.setLevelName("Lv." + level + " " + resolveLevelName(level));
+        growth.setScore(score);
+        growth.setContinuousPublishDays(streak);
+        growth.setQualityCreator(qualityCreator);
+        growth.setBadges(badges);
+        return growth;
+    }
+
+    private int countPublishStreak(List<Blog> blogs) {
+        List<LocalDate> dates = blogs.stream()
+                .map(Blog::getCreateTime)
+                .filter(time -> time != null)
+                .map(time -> time.toLocalDate())
+                .distinct()
+                .toList();
+        if (dates.isEmpty()) {
+            return 0;
+        }
+        int streak = 1;
+        LocalDate cursor = dates.get(0);
+        for (int i = 1; i < dates.size(); i++) {
+            LocalDate next = dates.get(i);
+            if (cursor.minusDays(1).equals(next)) {
+                streak++;
+                cursor = next;
+            } else {
+                break;
+            }
+        }
+        return streak;
+    }
+
+    private List<String> buildCreatorBadges(List<Blog> blogs, long likes, long collects, long followers, int streak, boolean qualityCreator) {
+        List<String> badges = new ArrayList<>();
+        if (qualityCreator) badges.add("优质创作者");
+        if (streak >= 3) badges.add("连续发布");
+        if (likes >= 100) badges.add("人气作者");
+        if (collects >= 20) badges.add("收藏达人");
+        if (followers >= 10) badges.add("被关注");
+        if (blogs.stream().anyMatch(blog -> ContentType.VIDEO.name().equals(blog.getContentType()) || ContentType.LIVE.name().equals(blog.getContentType()))) {
+            badges.add("视频创作者");
+        }
+        if (blogs.stream().anyMatch(blog -> ContentType.PRODUCT_NOTE.name().equals(blog.getContentType()))) {
+            badges.add("带货种草");
+        }
+        if (badges.isEmpty()) {
+            badges.add("新锐创作者");
+        }
+        return badges.stream().distinct().limit(5).toList();
+    }
+
+    private String resolveLevelName(int level) {
+        if (level >= 8) return "头部创作者";
+        if (level >= 6) return "资深创作者";
+        if (level >= 4) return "活跃创作者";
+        if (level >= 2) return "成长创作者";
+        return "新锐创作者";
     }
 
     private void putTrend(Map<String, Long> trendMap, Object keywordValue, Object heatValue) {

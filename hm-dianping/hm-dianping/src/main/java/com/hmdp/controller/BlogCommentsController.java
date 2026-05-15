@@ -1,44 +1,37 @@
 package com.hmdp.controller;
 
-
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.conditions.query.QueryChainWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.BlogComments;
 import com.hmdp.entity.User;
-import com.hmdp.service.IBlogService;
 import com.hmdp.service.IBlogCommentsService;
+import com.hmdp.service.IBlogService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.UserHolder;
+import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * <p>
- *  前端控制器
- * </p>
- *
- * @author 虎哥
- * @since 2021-12-22
+ * 评论控制器：负责笔记详情页评论流、二级回复、删除、举报和排序。
  */
 @RestController
 @RequestMapping("/blog-comments")
@@ -54,8 +47,8 @@ public class BlogCommentsController {
     private IBlogService blogService;
 
     /**
-     * 笔记详情页评论流。
-     * 只查询一级评论，并补充评论用户昵称和头像，方便前端直接渲染。
+     * 查询笔记评论流。
+     * sort 支持 hot/new/old：热门、最新、最早。
      */
     @GetMapping("/of/blog")
     public Result queryComments(
@@ -65,7 +58,7 @@ public class BlogCommentsController {
         QueryChainWrapper<BlogComments> query = commentsService.query()
                 .eq("blog_id", blogId)
                 .eq("parent_id", 0)
-                .eq("status", 0);
+                .and(wrapper -> wrapper.eq("status", 0).or().isNull("status"));
         if ("new".equals(sort)) {
             query.orderByDesc("create_time");
         } else if ("old".equals(sort)) {
@@ -83,7 +76,7 @@ public class BlogCommentsController {
                 : commentsService.query()
                 .eq("blog_id", blogId)
                 .in("parent_id", parentIds)
-                .eq("status", 0)
+                .and(wrapper -> wrapper.eq("status", 0).or().isNull("status"))
                 .orderByAsc("create_time")
                 .list();
         List<BlogComments> allComments = new ArrayList<>();
@@ -91,7 +84,7 @@ public class BlogCommentsController {
         allComments.addAll(replies);
         List<Long> userIds = allComments.stream()
                 .map(BlogComments::getUserId)
-                .filter(id -> id != null)
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
         Map<Long, User> userMap = userIds.isEmpty()
@@ -108,8 +101,7 @@ public class BlogCommentsController {
     }
 
     /**
-     * 发表评论。
-     * 当前只支持一级评论；登录态来自拦截器写入的 UserHolder。
+     * 发表评论或二级回复。
      */
     @PostMapping
     public Result saveComment(@RequestBody BlogComments comment) {
@@ -142,29 +134,11 @@ public class BlogCommentsController {
                 .setSql("comments = IFNULL(comments, 0) + 1")
                 .eq("id", comment.getBlogId())
                 .update();
-        return Result.ok(comment.getId());
-    }
-
-    private Map<String, Object> toCommentMap(BlogComments comment, Map<Long, User> userMap, List<Map<String, Object>> replies) {
-        User user = userMap.get(comment.getUserId());
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", comment.getId());
-        result.put("blogId", comment.getBlogId());
-        result.put("userId", comment.getUserId());
-        result.put("parentId", comment.getParentId());
-        result.put("answerId", comment.getAnswerId());
-        result.put("name", user == null ? "探店用户" : user.getNickName());
-        result.put("icon", user == null ? "" : Objects.toString(user.getIcon(), ""));
-        result.put("content", comment.getContent());
-        result.put("liked", comment.getLiked() == null ? 0 : comment.getLiked());
-        result.put("createTime", comment.getCreateTime());
-        result.put("replies", replies);
-        return result;
+        return Result.ok(commentResult(comment.getId(), comment.getBlogId()));
     }
 
     /**
-     * 评论点赞。
-     * 当前实现为轻量版，只维护评论点赞数量，不额外记录用户点赞明细。
+     * 评论点赞。当前轻量实现只维护点赞数，不记录用户点赞明细。
      */
     @PutMapping("/like/{id}")
     public Result likeComment(@PathVariable("id") Long commentId) {
@@ -177,13 +151,17 @@ public class BlogCommentsController {
         boolean success = commentsService.update()
                 .setSql("liked = IFNULL(liked, 0) + 1")
                 .eq("id", commentId)
+                .and(wrapper -> wrapper.eq("status", 0).or().isNull("status"))
                 .update();
-        return success ? Result.ok() : Result.fail("评论不存在");
+        if (!success) {
+            return Result.fail("评论不存在");
+        }
+        BlogComments comment = commentsService.getById(commentId);
+        return Result.ok(comment == null ? 0 : comment.getLiked());
     }
 
     /**
-     * 删除评论（软删除，仅本人可删）。
-     * 同时将笔记评论数 -1。
+     * 删除评论：软删除，一级评论会连同二级回复一起隐藏。
      */
     @DeleteMapping("/{id}")
     public Result deleteComment(@PathVariable("id") Long commentId) {
@@ -192,25 +170,19 @@ public class BlogCommentsController {
             return Result.fail("请先登录");
         }
         BlogComments comment = commentsService.getById(commentId);
-        if (comment == null || !isVisible(comment)) {
+        if (!isVisible(comment)) {
             return Result.fail("评论不存在");
         }
         if (!comment.getUserId().equals(user.getId())) {
             return Result.fail("无权删除");
         }
-        comment.setStatus(2);
-        comment.setUpdateTime(LocalDateTime.now());
-        commentsService.updateById(comment);
-        blogService.update()
-                .setSql("comments = GREATEST(IFNULL(comments, 0) - 1, 0)")
-                .eq("id", comment.getBlogId())
-                .update();
-        return Result.ok();
+        long affected = updateCommentThreadStatus(comment, 2);
+        decreaseBlogCommentCount(comment.getBlogId(), affected);
+        return Result.ok(commentResult(commentId, comment.getBlogId()));
     }
 
     /**
-     * 举报评论。
-     * 将评论状态标记为 1（被举报），由运营后台审核。
+     * 举报评论：将评论标记为被举报并从前台隐藏，等待后续运营审核。
      */
     @PutMapping("/report/{id}")
     public Result reportComment(@PathVariable("id") Long commentId) {
@@ -219,26 +191,85 @@ public class BlogCommentsController {
             return Result.fail("请先登录");
         }
         BlogComments comment = commentsService.getById(commentId);
-        if (comment == null || !isVisible(comment)) {
+        if (!isVisible(comment)) {
             return Result.fail("评论不存在");
         }
         if (comment.getUserId().equals(user.getId())) {
             return Result.fail("不能举报自己的评论");
         }
-        comment.setStatus(1);
-        comment.setUpdateTime(LocalDateTime.now());
-        commentsService.updateById(comment);
-        return Result.ok();
+        long affected = updateCommentThreadStatus(comment, 1);
+        decreaseBlogCommentCount(comment.getBlogId(), affected);
+        return Result.ok(commentResult(commentId, comment.getBlogId()));
+    }
+
+    private Map<String, Object> toCommentMap(BlogComments comment, Map<Long, User> userMap, List<Map<String, Object>> replies) {
+        User user = userMap.get(comment.getUserId());
+        UserDTO current = UserHolder.getUser();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", comment.getId());
+        result.put("blogId", comment.getBlogId());
+        result.put("userId", comment.getUserId());
+        result.put("parentId", comment.getParentId());
+        result.put("answerId", comment.getAnswerId());
+        result.put("name", user == null ? "探店用户" : user.getNickName());
+        result.put("icon", user == null ? "" : Objects.toString(user.getIcon(), ""));
+        result.put("content", comment.getContent());
+        result.put("liked", comment.getLiked() == null ? 0 : comment.getLiked());
+        result.put("isOwner", current != null && comment.getUserId() != null && comment.getUserId().equals(current.getId()));
+        result.put("createTime", comment.getCreateTime());
+        result.put("replies", replies);
+        return result;
     }
 
     private boolean isVisible(BlogComments comment) {
-        return comment != null && comment.getStatus() != null && comment.getStatus() == 0;
+        return comment != null && (comment.getStatus() == null || Objects.equals(comment.getStatus(), 0));
     }
 
     private Long countVisibleComments(Long blogId) {
         return commentsService.query()
                 .eq("blog_id", blogId)
-                .eq("status", 0)
+                .and(wrapper -> wrapper.eq("status", 0).or().isNull("status"))
                 .count();
+    }
+
+    private Map<String, Object> commentResult(Long id, Long blogId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", id);
+        result.put("comments", countVisibleComments(blogId));
+        return result;
+    }
+
+    private long updateCommentThreadStatus(BlogComments comment, int status) {
+        List<Long> ids = new ArrayList<>();
+        ids.add(comment.getId());
+        if (comment.getParentId() != null && comment.getParentId() == 0) {
+            List<Long> replyIds = commentsService.query()
+                    .select("id")
+                    .eq("blog_id", comment.getBlogId())
+                    .eq("parent_id", comment.getId())
+                    .and(wrapper -> wrapper.eq("status", 0).or().isNull("status"))
+                    .list()
+                    .stream()
+                    .map(BlogComments::getId)
+                    .toList();
+            ids.addAll(replyIds);
+        }
+        commentsService.update()
+                .set("status", status)
+                .set("update_time", LocalDateTime.now())
+                .in("id", ids)
+                .and(wrapper -> wrapper.eq("status", 0).or().isNull("status"))
+                .update();
+        return ids.size();
+    }
+
+    private void decreaseBlogCommentCount(Long blogId, long count) {
+        if (count <= 0) {
+            return;
+        }
+        blogService.update()
+                .setSql("comments = GREATEST(IFNULL(comments, 0) - " + count + ", 0)")
+                .eq("id", blogId)
+                .update();
     }
 }

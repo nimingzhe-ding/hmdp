@@ -78,6 +78,11 @@ public class Blog implements Serializable {
      */
     private String contentType;
 
+    /**
+     * 内容标签，多个标签用英文逗号分隔，例如：美食,探店,好物
+     */
+    private String tags;
+
     private String content;
 
     /**

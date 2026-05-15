@@ -60,6 +60,7 @@
               <strong id="profileHomeName">探店用户</strong>
               <span id="profileHomeIntro">这个人还没有写简介。</span>
               <small id="profileHomeMeta"></small>
+              <div class="creator-growth" id="profileGrowth"></div>
             </div>
             <button class="soft-button" id="editProfileButton" type="button">编辑资料</button>
           </div>
@@ -150,6 +151,7 @@
           <div>
             <strong id="drawerAuthor"></strong>
             <span id="drawerTime"></span>
+            <div class="creator-growth" id="drawerAuthorGrowth"></div>
           </div>
           <button class="follow-button" id="drawerFollow" type="button">关注</button>
         </div>
@@ -183,10 +185,22 @@
           <strong>智能看点</strong>
           <p id="noteSmartText"></p>
         </section>
+        <section class="note-related" id="noteRelated" hidden>
+          <div class="section-title">
+            <strong>相关推荐</strong>
+            <span>继续发现</span>
+          </div>
+          <div class="related-list" id="noteRelatedList"></div>
+        </section>
         <section class="comment-section">
           <div class="section-title">
             <strong>评论</strong>
             <span id="commentCount">0</span>
+          </div>
+          <div class="comment-sort">
+            <button type="button" class="is-active" data-comment-sort="hot">热门</button>
+            <button type="button" data-comment-sort="new">最新</button>
+            <button type="button" data-comment-sort="old">最早</button>
           </div>
           <div class="comment-list" id="commentList"></div>
         </section>
@@ -297,6 +311,10 @@
           <span>直播预告</span>
         </label>
       </div>
+      <div class="composer-draft-bar" id="composerDraftBar" hidden>
+        <span id="composerDraftText">草稿已自动保存</span>
+        <button type="button" id="clearComposerDraft">清空草稿</button>
+      </div>
       <label class="upload-box" for="imageFiles" data-content-field="image">
         <input id="imageFiles" name="files" type="file" accept="image/*" multiple>
         <span>上传图片</span>
@@ -331,6 +349,14 @@
       </label>
       <label>
         话题标签
+        <select name="tags">
+          <option value="探店">探店</option>
+          <option value="美食">美食</option>
+          <option value="穿搭">穿搭</option>
+          <option value="旅行">旅行</option>
+          <option value="数码">数码</option>
+          <option value="好物">好物</option>
+        </select>
         <input name="topics" maxlength="80" placeholder="如：#周末去哪儿 #人均50 #约会餐厅">
       </label>
       <label>
