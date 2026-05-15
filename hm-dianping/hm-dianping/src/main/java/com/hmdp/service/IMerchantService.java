@@ -19,13 +19,29 @@ public interface IMerchantService extends IService<Merchant> {
 
     Result updateProduct(Long productId, MerchantProductRequest request);
 
-    Result myProducts();
+    Result updateProductStatus(Long productId, Integer status);
 
-    Result myOrders();
+    Result adjustStock(Long productId, Integer delta);
+
+    Result myProducts(Integer status);
+
+    Result myOrders(Integer status);
 
     Result shipOrder(Long orderId);
 
+    Result handleRefund(Long orderId, boolean approve);
+
     Result createVoucher(MerchantVoucherRequest request);
 
+    Result updateVoucher(Long voucherId, MerchantVoucherRequest request);
+
+    Result updateVoucherStatus(Long voucherId, Integer status);
+
+    Result myVouchers(Integer status);
+
     Result notifications(Integer readFlag);
+
+    Result markNotificationsRead();
+
+    Result dashboard();
 }
