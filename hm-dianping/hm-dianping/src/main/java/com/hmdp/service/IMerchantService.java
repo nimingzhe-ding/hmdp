@@ -26,4 +26,6 @@ public interface IMerchantService extends IService<Merchant> {
     Result shipOrder(Long orderId);
 
     Result createVoucher(MerchantVoucherRequest request);
+
+    Result notifications(Integer readFlag);
 }

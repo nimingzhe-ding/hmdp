@@ -10,8 +10,10 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.MallOrder;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.Merchant;
+import com.hmdp.entity.MerchantNotification;
 import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.MerchantMapper;
+import com.hmdp.mapper.MerchantNotificationMapper;
 import com.hmdp.service.IMallOrderService;
 import com.hmdp.service.IMallProductService;
 import com.hmdp.service.IMerchantService;
@@ -35,6 +37,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Resource
     private IVoucherService voucherService;
+
+    @Resource
+    private MerchantNotificationMapper notificationMapper;
 
     @Override
     public Result mine() {
@@ -158,6 +163,21 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         }
         order.setStatus(3);
         return Result.ok(order);
+    }
+
+    @Override
+    public Result notifications(Integer readFlag) {
+        Merchant merchant = currentMerchant();
+        if (merchant == null) {
+            return Result.fail("请先开通商家中心");
+        }
+        var wrapper = new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MerchantNotification>()
+                .eq(MerchantNotification::getMerchantId, merchant.getId())
+                .orderByDesc(MerchantNotification::getCreateTime);
+        if (readFlag != null) {
+            wrapper.eq(MerchantNotification::getReadFlag, readFlag == 1);
+        }
+        return Result.ok(notificationMapper.selectList(wrapper));
     }
 
     @Override

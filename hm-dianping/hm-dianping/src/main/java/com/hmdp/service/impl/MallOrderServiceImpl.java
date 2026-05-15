@@ -8,8 +8,10 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.MallCartItem;
 import com.hmdp.entity.MallOrder;
 import com.hmdp.entity.MallProduct;
+import com.hmdp.entity.MerchantNotification;
 import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.MallOrderMapper;
+import com.hmdp.mapper.MerchantNotificationMapper;
 import com.hmdp.service.IMallCartService;
 import com.hmdp.service.IMallOrderService;
 import com.hmdp.service.IMallProductService;
@@ -17,6 +19,7 @@ import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +32,7 @@ import java.time.LocalDateTime;
  *           待支付(1) -> 已取消(6)
  *           已支付(2) -> 退款中(7)
  */
+@Slf4j
 @Service
 public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder> implements IMallOrderService {
 
@@ -51,6 +55,9 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
 
     @Resource
     private IVoucherService voucherService;
+
+    @Resource
+    private MerchantNotificationMapper notificationMapper;
 
     @Override
     @Transactional
@@ -80,13 +87,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         if (product == null || product.getStatus() == null || product.getStatus() != 1) {
             return Result.fail("商品不存在或已下架");
         }
-        boolean stockUpdated = productService.update()
-                .setSql("stock = stock - " + quantity)
-                .setSql("sold = IFNULL(sold, 0) + " + quantity)
-                .eq("id", productId)
-                .ge("stock", quantity)
-                .update();
-        if (!stockUpdated) {
+        if (product.getStock() == null || product.getStock() < quantity) {
             return Result.fail("库存不足");
         }
         long originalAmount = (product.getPrice() == null ? 0L : product.getPrice()) * quantity;
@@ -131,6 +132,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     }
 
     @Override
+    @Transactional
     public Result payOrder(Long orderId) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
@@ -139,6 +141,16 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         MallOrder order = getOrderAndCheckOwner(orderId, user.getId());
         if (order == null) {
             return Result.fail("订单不存在");
+        }
+        // 扣库存 + 更新销量
+        boolean stockUpdated = productService.update()
+                .setSql("stock = stock - " + order.getQuantity())
+                .setSql("sold = IFNULL(sold, 0) + " + order.getQuantity())
+                .eq("id", order.getProductId())
+                .ge("stock", order.getQuantity())
+                .update();
+        if (!stockUpdated) {
+            return Result.fail("库存不足，支付失败");
         }
         LocalDateTime now = LocalDateTime.now();
         boolean updated = update()
@@ -150,8 +162,16 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .eq("status", STATUS_PENDING_PAY)
                 .update();
         if (!updated) {
+            // 支付状态变更失败，回滚库存
+            productService.update()
+                    .setSql("stock = stock + " + order.getQuantity())
+                    .setSql("sold = GREATEST(IFNULL(sold, 0) - " + order.getQuantity() + ", 0)")
+                    .eq("id", order.getProductId())
+                    .update();
             return Result.fail("当前订单状态不能支付");
         }
+        // 通知商家有新订单待处理
+        notifyMerchant(order.getMerchantId(), "order_paid", order);
         return Result.ok(loadOrder(orderId));
     }
 
@@ -225,12 +245,6 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         if (!updated) {
             return Result.fail("取消订单失败");
         }
-        // 回滚库存
-        productService.update()
-                .setSql("stock = stock + " + order.getQuantity())
-                .setSql("sold = GREATEST(IFNULL(sold, 0) - " + order.getQuantity() + ", 0)")
-                .eq("id", order.getProductId())
-                .update();
         return Result.ok(loadOrder(orderId));
     }
 
@@ -301,5 +315,26 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
             return "";
         }
         return images.split(",")[0].trim();
+    }
+
+    private void notifyMerchant(Long merchantId, String type, MallOrder order) {
+        if (merchantId == null) {
+            return;
+        }
+        try {
+            MerchantNotification notification = new MerchantNotification();
+            notification.setMerchantId(merchantId);
+            notification.setType(type);
+            notification.setOrderId(order.getId());
+            notification.setPayload("{\"orderId\":" + order.getId()
+                    + ",\"productTitle\":\"" + order.getProductTitle()
+                    + "\",\"quantity\":" + order.getQuantity()
+                    + ",\"totalAmount\":" + order.getTotalAmount() + "}");
+            notification.setReadFlag(false);
+            notification.setCreateTime(LocalDateTime.now());
+            notificationMapper.insert(notification);
+        } catch (Exception e) {
+            log.error("通知商家失败, merchantId={}, orderId={}", merchantId, order.getId(), e);
+        }
     }
 }
