@@ -9,11 +9,13 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.BlogLike;
 import com.hmdp.entity.BlogProduct;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.User;
 import com.hmdp.enums.ContentType;
+import com.hmdp.mapper.BlogLikeMapper;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.mapper.BlogProductMapper;
 import com.hmdp.mapper.MallProductMapper;
@@ -57,6 +59,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private BlogProductMapper blogProductMapper;
     @Resource
     private MallProductMapper mallProductMapper;
+    @Resource
+    private BlogLikeMapper blogLikeMapper;
 
     /**
      * 保存博文
@@ -209,17 +213,26 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         Long userId = UserHolder.getUser().getId();
         //判断当前用户是否已经点
         String key = "blog:liked:"+id;
-        Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
-        if(score == null) {
+        long likedCount = blogLikeMapper.selectCount(new QueryWrapper<BlogLike>()
+                .eq("user_id", userId)
+                .eq("blog_id", id));
+        if(likedCount == 0) {
             //如果没点赞，点赞（数据库点赞数+1，保存用户到redis集合）
             boolean isSuccess = update().setSql("liked = liked+1").eq("id", id).update();
             if(isSuccess) {
-            stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
+                BlogLike blogLike = new BlogLike()
+                        .setUserId(userId)
+                        .setBlogId(id);
+                blogLikeMapper.insert(blogLike);
+                stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
             }
 
         }else{
             boolean isSuccess = update().setSql("liked = liked-1").eq("id", id).update();
             if(isSuccess) {
+                blogLikeMapper.delete(new QueryWrapper<BlogLike>()
+                        .eq("user_id", userId)
+                        .eq("blog_id", id));
                 stringRedisTemplate.opsForZSet().remove(key, userId.toString());
             }
         }

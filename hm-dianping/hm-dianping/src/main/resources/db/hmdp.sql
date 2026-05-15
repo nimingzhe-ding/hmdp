@@ -101,6 +101,25 @@ CREATE TABLE `tb_blog_collect`  (
 -- ----------------------------
 
 -- ----------------------------
+-- Table structure for tb_blog_like
+-- ----------------------------
+DROP TABLE IF EXISTS `tb_blog_like`;
+CREATE TABLE `tb_blog_like`  (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint(20) UNSIGNED NOT NULL COMMENT '用户id',
+  `blog_id` bigint(20) UNSIGNED NOT NULL COMMENT '笔记id',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_user_blog_like`(`user_id`, `blog_id`) USING BTREE,
+  INDEX `idx_blog_id`(`blog_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '笔记点赞关系表' ROW_FORMAT = Compact;
+
+-- ----------------------------
+-- Records of tb_blog_like
+-- ----------------------------
+
+-- ----------------------------
 -- Table structure for tb_note_event
 -- ----------------------------
 DROP TABLE IF EXISTS `tb_note_event`;

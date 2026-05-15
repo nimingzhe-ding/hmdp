@@ -13,6 +13,17 @@ CREATE TABLE IF NOT EXISTS `tb_blog_collect` (
   KEY `idx_blog_id` (`blog_id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记收藏关系表';
 
+CREATE TABLE IF NOT EXISTS `tb_blog_like` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '用户id',
+  `blog_id` bigint UNSIGNED NOT NULL COMMENT '笔记id',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_user_blog_like` (`user_id`, `blog_id`) USING BTREE,
+  KEY `idx_blog_id` (`blog_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记点赞关系表';
+
 -- 兼容早期数据：评论数和评论点赞数为空时按 0 处理。
 UPDATE `tb_blog` SET `comments` = 0 WHERE `comments` IS NULL;
 UPDATE `tb_blog_comments` SET `liked` = 0 WHERE `liked` IS NULL;

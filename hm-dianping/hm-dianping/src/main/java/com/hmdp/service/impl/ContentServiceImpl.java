@@ -17,6 +17,7 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogCollect;
+import com.hmdp.entity.BlogLike;
 import com.hmdp.entity.BlogProduct;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.MallProduct;
@@ -26,6 +27,7 @@ import com.hmdp.entity.User;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.entity.Voucher;
 import com.hmdp.enums.ContentType;
+import com.hmdp.mapper.BlogLikeMapper;
 import com.hmdp.mapper.BlogProductMapper;
 import com.hmdp.mapper.NoteEventMapper;
 import com.hmdp.service.IBlogCollectService;
@@ -86,6 +88,9 @@ public class ContentServiceImpl implements IContentService {
 
     @Resource
     private BlogProductMapper blogProductMapper;
+
+    @Resource
+    private BlogLikeMapper blogLikeMapper;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -509,25 +514,11 @@ public class ContentServiceImpl implements IContentService {
     }
 
     private List<Long> findLikedBlogIds(Long userId) {
-        Set<String> keys = stringRedisTemplate.keys("blog:liked:*");
-        if (keys == null || keys.isEmpty()) {
-            return List.of();
-        }
-        Map<Long, Double> likedMap = new LinkedHashMap<>();
-        for (String key : keys) {
-            Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
-            if (score == null) {
-                continue;
-            }
-            String blogIdText = StrUtil.removePrefix(key, "blog:liked:");
-            if (StrUtil.isBlank(blogIdText)) {
-                continue;
-            }
-            likedMap.put(Long.valueOf(blogIdText), score);
-        }
-        return likedMap.entrySet().stream()
-                .sorted((left, right) -> right.getValue().compareTo(left.getValue()))
-                .map(Map.Entry::getKey)
+        return blogLikeMapper.selectList(new QueryWrapper<BlogLike>()
+                        .eq("user_id", userId)
+                        .orderByDesc("create_time"))
+                .stream()
+                .map(BlogLike::getBlogId)
                 .toList();
     }
 
