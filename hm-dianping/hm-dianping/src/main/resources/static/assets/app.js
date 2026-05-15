@@ -57,6 +57,7 @@ const els = {
   drawerMedia: document.querySelector("#drawerMedia"),
   drawerThumbs: document.querySelector("#drawerThumbs"),
   composer: document.querySelector("#composerDialog"),
+  composerTitle: document.querySelector("#composerDialog h2"),
   shopDialog: document.querySelector("#shopDialog"),
   productDialog: document.querySelector("#productDialog"),
   cartDialog: document.querySelector("#cartDialog"),
@@ -66,6 +67,9 @@ const els = {
   cartList: document.querySelector("#cartList"),
   merchantPanel: document.querySelector("#merchantPanel"),
   composerForm: document.querySelector("#composerForm"),
+  contentTypeInputs: document.querySelectorAll("input[name='contentType']"),
+  contentFields: document.querySelectorAll("[data-content-field]"),
+  videoUploadTip: document.querySelector("[data-video-upload-tip]"),
   imageFiles: document.querySelector("#imageFiles"),
   videoFile: document.querySelector("#videoFile"),
   uploadPreview: document.querySelector("#uploadPreview"),
@@ -214,6 +218,15 @@ function normalizeContentType(contentType, videoUrl) {
   const supported = ["IMAGE", "VIDEO", "LIVE", "PRODUCT_NOTE"];
   if (supported.includes(normalized)) return normalized;
   return videoUrl ? "VIDEO" : "IMAGE";
+}
+
+function contentTypeLabel(contentType) {
+  return {
+    IMAGE: "图文",
+    VIDEO: "视频",
+    LIVE: "直播",
+    PRODUCT_NOTE: "种草"
+  }[contentType] || "图文";
 }
 
 function parseVideoContent(content) {
@@ -436,9 +449,10 @@ function createNoteCard(note) {
   const button = document.createElement("button");
   button.type = "button";
   button.addEventListener("click", () => openDrawer(note));
+  const badge = note.contentType === "IMAGE" ? "" : `<span class="video-badge">${contentTypeLabel(note.contentType)}</span>`;
   const cover = note.isVideo
-    ? `<video class="note-image note-video-cover" style="--ratio:${note.ratio}" src="${normalizeMedia(note.videoUrl)}" poster="${normalizeImage(note.image)}" muted playsinline preload="metadata"></video><span class="video-badge">视频</span>`
-    : `<img class="note-image" style="--ratio:${note.ratio}" src="${normalizeImage(note.image)}" alt="${escapeHtml(note.title)}" loading="lazy">`;
+    ? `<video class="note-image note-video-cover" style="--ratio:${note.ratio}" src="${normalizeMedia(note.videoUrl)}" poster="${normalizeImage(note.image)}" muted playsinline preload="metadata"></video>${badge}`
+    : `<img class="note-image" style="--ratio:${note.ratio}" src="${normalizeImage(note.image)}" alt="${escapeHtml(note.title)}" loading="lazy">${badge}`;
   button.innerHTML = `
     <div class="note-cover">
       ${cover}
@@ -1722,8 +1736,41 @@ function showWallet() {
 }
 
 // ------------------------------
-// Publish workflow with image upload
+// 发布流程：按内容类型上传素材并提交笔记
 // ------------------------------
+function getComposerContentType() {
+  return normalizeContentType(els.composerForm.elements.contentType?.value, "");
+}
+
+function applyComposerType() {
+  const contentType = getComposerContentType();
+  const isVideoLike = ["VIDEO", "LIVE"].includes(contentType);
+  const isProductNote = contentType === "PRODUCT_NOTE";
+  const titles = {
+    IMAGE: "发布图文",
+    VIDEO: "发布视频",
+    PRODUCT_NOTE: "发布商品种草",
+    LIVE: "发布直播预告"
+  };
+  if (els.composerTitle) {
+    els.composerTitle.textContent = titles[contentType] || "发布内容";
+  }
+  els.contentFields.forEach(field => {
+    const scope = field.dataset.contentField;
+    field.hidden = (scope === "video" && !isVideoLike) || (scope === "shop" && !isProductNote);
+  });
+  if (els.videoUploadTip) {
+    els.videoUploadTip.textContent = contentType === "LIVE"
+      ? "支持直播预告视频、回放或直播地址"
+      : "支持 MP4/WebM/MOV，发布前会自动上传";
+  }
+  const shopInput = els.composerForm.elements.shopId;
+  if (shopInput) {
+    shopInput.required = isProductNote;
+    shopInput.placeholder = isProductNote ? "商品种草需要关联店铺" : "关联店铺，选填";
+  }
+}
+
 async function uploadSelectedImages() {
   const files = [...els.imageFiles.files];
   const uploaded = [];
@@ -1753,13 +1800,25 @@ async function submitComposer(event) {
   submitButton.textContent = "发布中";
   const form = new FormData(els.composerForm);
   try {
+    const contentType = getComposerContentType();
+    const isVideoLike = ["VIDEO", "LIVE"].includes(contentType);
+    const isProductNote = contentType === "PRODUCT_NOTE";
     const uploaded = await uploadSelectedImages();
-    const uploadedVideo = await uploadSelectedVideo();
+    const uploadedVideo = isVideoLike ? await uploadSelectedVideo() : "";
     const manualImages = String(form.get("images") || "").trim();
-    const videoUrl = uploadedVideo || String(form.get("videoUrl") || "").trim();
+    const videoUrl = isVideoLike ? uploadedVideo || String(form.get("videoUrl") || "").trim() : "";
+    const shopId = isProductNote && form.get("shopId") ? Number(form.get("shopId")) : null;
     const content = String(form.get("content") || "").trim();
+    if (isVideoLike && !videoUrl) {
+      showStatus(contentType === "LIVE" ? "直播预告需要填写直播地址或上传预告视频。" : "视频内容需要上传视频或填写视频地址。");
+      return;
+    }
     if (!uploaded.length && !manualImages && !videoUrl) {
       showStatus("发布笔记至少需要一张图片。");
+      return;
+    }
+    if (isProductNote && !shopId) {
+      showStatus("商品种草需要关联店铺 ID。");
       return;
     }
     if (content.length < 12) {
@@ -1770,8 +1829,8 @@ async function submitComposer(event) {
       title: form.get("title"),
       images: uploaded.length ? uploaded.join(",") : manualImages,
       videoUrl,
-      contentType: videoUrl ? "VIDEO" : "IMAGE",
-      shopId: form.get("shopId") ? Number(form.get("shopId")) : null,
+      contentType,
+      shopId,
       content: mergeTopics(content, form.get("topics"))
     };
     await request("/blog", { method: "POST", body: JSON.stringify(payload) });
@@ -1779,6 +1838,7 @@ async function submitComposer(event) {
     els.composerForm.reset();
     els.uploadPreview.innerHTML = "";
     els.videoPreview.innerHTML = "";
+    applyComposerType();
     resetAndLoad();
   } catch {
     showStatus("发布失败，请确认已登录，且图片、店铺信息有效。");
@@ -1953,6 +2013,11 @@ els.videoFile.addEventListener("change", () => {
   els.videoPreview.innerHTML = `<video src="${url}" controls muted playsinline></video>`;
 });
 
+els.contentTypeInputs.forEach(input => {
+  input.addEventListener("change", applyComposerType);
+});
+applyComposerType();
+
 document.querySelectorAll("[data-feed]").forEach(button => {
   button.addEventListener("click", () => switchFeed(button.dataset.feed));
 });
@@ -1973,9 +2038,15 @@ document.querySelector("#refreshSmart").addEventListener("click", () => {
 });
 
 document.querySelectorAll("[data-close-drawer]").forEach(item => item.addEventListener("click", closeDrawer));
-document.querySelector("#openComposer").addEventListener("click", () => requireLogin() && els.composer.showModal());
-document.querySelector("#railPublish").addEventListener("click", () => requireLogin() && els.composer.showModal());
-document.querySelector("#mobilePublish").addEventListener("click", () => requireLogin() && els.composer.showModal());
+function openComposer() {
+  if (!requireLogin()) return;
+  applyComposerType();
+  els.composer.showModal();
+}
+
+document.querySelector("#openComposer").addEventListener("click", openComposer);
+document.querySelector("#railPublish").addEventListener("click", openComposer);
+document.querySelector("#mobilePublish").addEventListener("click", openComposer);
 document.querySelector("#closeShopDialog").addEventListener("click", () => els.shopDialog.close());
 document.querySelector("#mallTab").addEventListener("click", switchMall);
 document.querySelector("#railMall").addEventListener("click", switchMall);

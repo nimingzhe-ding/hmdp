@@ -19,8 +19,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Video danmaku domain service.
- * Reads are anonymous; writes require a logged-in user and a video note.
+ * 视频弹幕领域服务。
+ * 弹幕读取允许匿名访问，发送弹幕要求用户已登录且笔记支持视频互动。
  */
 @Service
 public class VideoDanmakuServiceImpl extends ServiceImpl<VideoDanmakuMapper, VideoDanmaku> implements IVideoDanmakuService {
@@ -64,7 +64,7 @@ public class VideoDanmakuServiceImpl extends ServiceImpl<VideoDanmakuMapper, Vid
             return Result.fail("\u53ea\u6709\u89c6\u9891\u548c\u76f4\u64ad\u5185\u5bb9\u53ef\u4ee5\u53d1\u9001\u5f39\u5e55");
         }
 
-        // Store userId for moderation/audit, but do not expose it in public responses.
+        // 保存用户 ID 便于后续审核和治理，但公开响应不暴露发送人。
         danmaku.setId(null);
         danmaku.setUserId(user.getId());
         danmaku.setContent(StrUtil.sub(danmaku.getContent().trim(), 0, 40));

@@ -5,7 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import java.util.Arrays;
 
 /**
- * Content type taxonomy for notes in the content-commerce feed.
+ * 内容种草交易场景下的笔记类型体系。
  */
 public enum ContentType {
     IMAGE,

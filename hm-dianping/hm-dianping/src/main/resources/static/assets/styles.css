@@ -1910,6 +1910,53 @@ dialog::backdrop {
   font-weight: 800;
 }
 
+.composer-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.composer-type-tabs label {
+  display: block;
+  margin: 0;
+}
+
+.composer-type-tabs input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.composer-type-tabs span {
+  display: grid;
+  min-height: 38px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #555;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.composer-type-tabs input:checked + span {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
+.composer-type-tabs input:focus-visible + span {
+  outline: 2px solid rgba(255, 90, 95, .32);
+  outline-offset: 2px;
+}
+
+.composer-form [hidden] {
+  display: none !important;
+}
+
 .composer-form input,
 .composer-form textarea,
 .login-form input {
@@ -1925,6 +1972,12 @@ dialog::backdrop {
 .login-form input {
   height: 42px;
   padding: 0 12px;
+}
+
+.composer-type-tabs input {
+  width: 1px;
+  height: 1px;
+  padding: 0;
 }
 
 .composer-form textarea {

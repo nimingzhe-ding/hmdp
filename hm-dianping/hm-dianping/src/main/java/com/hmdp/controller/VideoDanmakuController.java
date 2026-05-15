@@ -12,8 +12,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Video danmaku API.
- * Public reads stay anonymous; sending is protected by LoginInterceptor.
+ * 视频弹幕接口。
+ * 弹幕读取允许匿名访问，发送弹幕由登录拦截器保护。
  */
 @RestController
 @RequestMapping("/video-danmaku")

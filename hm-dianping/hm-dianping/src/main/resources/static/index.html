@@ -295,23 +295,41 @@
   <dialog class="composer-dialog" id="composerDialog">
     <form method="dialog" class="composer-form" id="composerForm">
       <div class="dialog-head">
-        <h2>发布图文笔记</h2>
+        <h2>发布内容</h2>
         <button class="icon-button" value="cancel" aria-label="关闭发布弹窗">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/></svg>
         </button>
       </div>
-      <label class="upload-box" for="imageFiles">
+      <div class="composer-type-tabs" role="radiogroup" aria-label="内容类型">
+        <label>
+          <input type="radio" name="contentType" value="IMAGE" checked>
+          <span>图文</span>
+        </label>
+        <label>
+          <input type="radio" name="contentType" value="VIDEO">
+          <span>视频</span>
+        </label>
+        <label>
+          <input type="radio" name="contentType" value="PRODUCT_NOTE">
+          <span>商品种草</span>
+        </label>
+        <label>
+          <input type="radio" name="contentType" value="LIVE">
+          <span>直播预告</span>
+        </label>
+      </div>
+      <label class="upload-box" for="imageFiles" data-content-field="image">
         <input id="imageFiles" name="files" type="file" accept="image/*" multiple>
         <span>上传图片</span>
         <small>支持多张图片，发布前会自动上传</small>
       </label>
       <div class="preview-grid" id="uploadPreview"></div>
-      <label class="upload-box video-upload-box" for="videoFile">
+      <label class="upload-box video-upload-box" for="videoFile" data-content-field="video">
         <input id="videoFile" name="videoFile" type="file" accept="video/mp4,video/webm,video/quicktime">
         <span>上传视频</span>
-        <small>支持 MP4/WebM/MOV，发布前会自动上传</small>
+        <small data-video-upload-tip>支持 MP4/WebM/MOV，发布前会自动上传</small>
       </label>
-      <div class="video-preview" id="videoPreview"></div>
+      <div class="video-preview" id="videoPreview" data-content-field="video"></div>
       <label>
         标题
         <input name="title" maxlength="80" required placeholder="比如：人均 30 的宝藏茶餐厅">
@@ -320,12 +338,12 @@
         图片地址
         <input name="images" placeholder="/imgs/blogs/blog1.jpg，多个地址用英文逗号分隔">
       </label>
-      <label>
-        店铺 ID
-        <input name="videoUrl" placeholder="MP4 地址，填写后作为视频笔记展示">
+      <label data-content-field="video">
+        视频/直播地址
+        <input name="videoUrl" placeholder="MP4 或直播回放地址">
       </label>
-      <label>
-        店铺 ID
+      <label data-content-field="shop">
+        关联店铺 ID
         <input name="shopId" type="number" min="1" placeholder="关联店铺，选填">
       </label>
       <label>
