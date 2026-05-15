@@ -84,7 +84,15 @@ ALTER TABLE `tb_voucher`
   ADD INDEX IF NOT EXISTS `idx_mall_voucher` (`merchant_id`, `product_id`, `status`);
 
 ALTER TABLE `tb_blog`
-  ADD COLUMN IF NOT EXISTS `video_url` varchar(1024) NULL COMMENT '视频笔记地址' AFTER `images`;
+  ADD COLUMN IF NOT EXISTS `video_url` varchar(1024) NULL COMMENT '视频笔记地址' AFTER `images`,
+  ADD COLUMN IF NOT EXISTS `content_type` varchar(32) NOT NULL DEFAULT 'IMAGE' COMMENT '内容类型：IMAGE/VIDEO/LIVE/PRODUCT_NOTE' AFTER `video_url`,
+  ADD INDEX IF NOT EXISTS `idx_blog_content_type` (`content_type`, `create_time`);
+
+UPDATE `tb_blog`
+SET `content_type` = 'VIDEO'
+WHERE `video_url` IS NOT NULL
+  AND TRIM(`video_url`) <> ''
+  AND (`content_type` IS NULL OR `content_type` = '' OR `content_type` = 'IMAGE');
 
 CREATE TABLE IF NOT EXISTS `tb_video_danmaku` (
   `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',

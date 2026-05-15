@@ -6,6 +6,7 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.VideoDanmaku;
+import com.hmdp.enums.ContentType;
 import com.hmdp.mapper.VideoDanmakuMapper;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IVideoDanmakuService;
@@ -76,7 +77,7 @@ public class VideoDanmakuServiceImpl extends ServiceImpl<VideoDanmakuMapper, Vid
 
     private boolean canUseDanmaku(Long blogId) {
         Blog blog = blogService.getById(blogId);
-        return blog != null && StrUtil.isNotBlank(blog.getVideoUrl());
+        return blog != null && ContentType.supportsDanmaku(blog.getContentType(), blog.getVideoUrl());
     }
 
     private Map<String, Object> toView(VideoDanmaku danmaku) {

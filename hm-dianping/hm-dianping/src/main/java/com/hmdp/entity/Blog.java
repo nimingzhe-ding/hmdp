@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.hmdp.enums.ContentType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
@@ -71,6 +72,11 @@ public class Blog implements Serializable {
      */
     private String videoUrl;
 
+    /**
+     * 内容类型：IMAGE、VIDEO、LIVE、PRODUCT_NOTE
+     */
+    private String contentType;
+
     private String content;
 
     /**
@@ -93,5 +99,12 @@ public class Blog implements Serializable {
      */
     private LocalDateTime updateTime;
 
+    public String getContentType() {
+        return ContentType.resolve(contentType, videoUrl);
+    }
+
+    public void setContentType(String contentType) {
+        this.contentType = ContentType.normalizeName(contentType);
+    }
 
 }

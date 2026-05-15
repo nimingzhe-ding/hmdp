@@ -191,19 +191,29 @@ function normalizeNote(note, index = 0) {
   const images = String(note.images || "").split(",").map(item => item.trim()).filter(Boolean);
   const image = images[0] || fallbackNotes[index % fallbackNotes.length].images;
   const parsedContent = parseVideoContent(note.content || "");
+  const videoUrl = normalizeMedia(note.videoUrl || note.video || parsedContent.videoUrl);
+  const contentType = normalizeContentType(note.contentType, videoUrl);
   return {
     ...note,
     image,
     images,
+    contentType,
     name: note.name || `探店用户 ${note.userId || ""}`.trim(),
     icon: normalizeImage(note.icon) || fallbackNotes[index % fallbackNotes.length].icon,
     liked: note.liked || 0,
     comments: note.comments || 0,
     content: parsedContent.content,
-    videoUrl: normalizeMedia(note.videoUrl || note.video || parsedContent.videoUrl),
-    isVideo: Boolean(note.videoUrl || note.video || parsedContent.videoUrl),
+    videoUrl,
+    isVideo: ["VIDEO", "LIVE"].includes(contentType) && Boolean(videoUrl),
     ratio: [0.78, 1, 1.14, 1.28, 0.92][index % 5]
   };
+}
+
+function normalizeContentType(contentType, videoUrl) {
+  const normalized = String(contentType || "").trim().toUpperCase();
+  const supported = ["IMAGE", "VIDEO", "LIVE", "PRODUCT_NOTE"];
+  if (supported.includes(normalized)) return normalized;
+  return videoUrl ? "VIDEO" : "IMAGE";
 }
 
 function parseVideoContent(content) {
@@ -1760,6 +1770,7 @@ async function submitComposer(event) {
       title: form.get("title"),
       images: uploaded.length ? uploaded.join(",") : manualImages,
       videoUrl,
+      contentType: videoUrl ? "VIDEO" : "IMAGE",
       shopId: form.get("shopId") ? Number(form.get("shopId")) : null,
       content: mergeTopics(content, form.get("topics"))
     };

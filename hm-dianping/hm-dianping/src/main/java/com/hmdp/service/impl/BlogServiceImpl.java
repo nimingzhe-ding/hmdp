@@ -10,6 +10,7 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
+import com.hmdp.enums.ContentType;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -54,6 +55,10 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
      */
     @Override
     public Result saveBlog(Blog blog) {
+        if (blog == null) {
+            return Result.fail("笔记内容不能为空");
+        }
+        blog.setContentType(ContentType.resolve(blog.getContentType(), blog.getVideoUrl()));
         //获取登录用户
         Long id = UserHolder.getUser().getId();
         //保存博文
