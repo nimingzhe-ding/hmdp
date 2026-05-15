@@ -56,6 +56,9 @@ const els = {
   drawer: document.querySelector("#detailDrawer"),
   drawerMedia: document.querySelector("#drawerMedia"),
   drawerThumbs: document.querySelector("#drawerThumbs"),
+  noteProductBridge: document.querySelector("#noteProductBridge"),
+  noteProductList: document.querySelector("#noteProductList"),
+  noteProductCount: document.querySelector("#noteProductCount"),
   composer: document.querySelector("#composerDialog"),
   composerTitle: document.querySelector("#composerDialog h2"),
   shopDialog: document.querySelector("#shopDialog"),
@@ -209,6 +212,7 @@ function normalizeNote(note, index = 0) {
     content: parsedContent.content,
     videoUrl,
     isVideo: ["VIDEO", "LIVE"].includes(contentType) && Boolean(videoUrl),
+    products: Array.isArray(note.products) ? note.products.map(normalizeProduct) : [],
     ratio: [0.78, 1, 1.14, 1.28, 0.92][index % 5]
   };
 }
@@ -494,6 +498,7 @@ async function openDrawer(note) {
   document.querySelector("#drawerTitle").textContent = note.title;
   document.querySelector("#drawerContent").textContent = note.content || "这个作者还没有填写更多内容。";
   renderShopBridge(note.shop);
+  renderNoteProducts(note.products);
   document.querySelector("#drawerLike").textContent = `♥ ${note.liked}`;
   document.querySelector("#drawerCollect").textContent = state.collected.has(String(note.id)) ? "★ 已收藏" : "☆ 收藏";
   document.querySelector("#drawerFollow").textContent = state.followed.has(String(note.userId)) ? "已关注" : "关注";
@@ -533,6 +538,43 @@ function renderShopBridge(shop) {
     document.querySelector("#voucherAction").onclick = () => openShopDialog(shop);
   }
   els.shopBridge.hidden = false;
+}
+
+function renderNoteProducts(products = []) {
+  const list = Array.isArray(products) ? products.map(normalizeProduct) : [];
+  if (!list.length) {
+    els.noteProductBridge.hidden = true;
+    els.noteProductList.innerHTML = "";
+    els.noteProductCount.textContent = "0";
+    return;
+  }
+  els.noteProductCount.textContent = String(list.length);
+  els.noteProductList.innerHTML = list.map(product => `
+    <article class="note-product-card">
+      <button class="note-product-main" type="button" data-note-product-open="${product.id}">
+        <img src="${normalizeImage(product.image)}" alt="${escapeHtml(product.title)}">
+        <span>
+          <strong>${escapeHtml(product.title)}</strong>
+          <small>${escapeHtml(product.subTitle || "内容同款好物")}</small>
+          <b>¥${formatMoney(product.price)}</b>
+        </span>
+      </button>
+      <div class="note-product-actions">
+        <button type="button" data-note-product-cart="${product.id}">加购</button>
+        <button type="button" data-note-product-buy="${product.id}">购买</button>
+      </div>
+    </article>
+  `).join("");
+  els.noteProductList.querySelectorAll("[data-note-product-open]").forEach(button => {
+    button.addEventListener("click", () => openProduct(button.dataset.noteProductOpen));
+  });
+  els.noteProductList.querySelectorAll("[data-note-product-cart]").forEach(button => {
+    button.addEventListener("click", () => addToCart(button.dataset.noteProductCart, 1));
+  });
+  els.noteProductList.querySelectorAll("[data-note-product-buy]").forEach(button => {
+    button.addEventListener("click", () => buyProductNow(button.dataset.noteProductBuy));
+  });
+  els.noteProductBridge.hidden = false;
 }
 
 async function openShopDialog(shop) {
@@ -724,8 +766,12 @@ function bindVideoFeedEvents(videos) {
   els.videoFeed.querySelectorAll("[data-video-buy]").forEach(button => {
     button.addEventListener("click", () => {
       const note = videos.find(item => String(item.id) === String(button.dataset.videoBuy));
-      if (note?.shop) renderShopBridge(note.shop);
-      switchMall();
+      if (note?.products?.length) {
+        openProduct(note.products[0].id);
+        return;
+      }
+      if (note?.shop) openDrawer(note);
+      else switchMall();
     });
   });
   els.videoFeed.querySelectorAll("[data-danmaku-form]").forEach(form => {
@@ -1359,6 +1405,18 @@ async function payMallOrder(orderId) {
   return request(`/mall/orders/${orderId}/pay`, { method: "POST" });
 }
 
+async function buyProductNow(productId) {
+  if (!requireLogin()) return;
+  try {
+    const order = await createMallOrder({ productId: Number(productId), quantity: 1 });
+    await payMallOrder(order.id);
+    showStatus(`付款成功，订单号：${order.id}`);
+    loadProducts();
+  } catch (error) {
+    showStatus(error.message || "购买失败，请稍后再试。");
+  }
+}
+
 async function buyCurrentProductNow() {
   if (!state.currentProduct || !requireLogin()) return;
   try {
@@ -1769,6 +1827,20 @@ function applyComposerType() {
     shopInput.required = isProductNote;
     shopInput.placeholder = isProductNote ? "商品种草需要关联店铺" : "关联店铺，选填";
   }
+  const productInput = els.composerForm.elements.productIds;
+  if (productInput) {
+    productInput.required = isProductNote;
+    productInput.placeholder = isProductNote ? "商品种草至少挂载一个商品 ID" : "多个商品 ID 用英文逗号分隔";
+  }
+}
+
+function parseProductIds(value) {
+  return String(value || "")
+    .split(",")
+    .map(item => Number(item.trim()))
+    .filter(id => Number.isInteger(id) && id > 0)
+    .filter((id, index, list) => list.indexOf(id) === index)
+    .slice(0, 6);
 }
 
 async function uploadSelectedImages() {
@@ -1808,6 +1880,7 @@ async function submitComposer(event) {
     const manualImages = String(form.get("images") || "").trim();
     const videoUrl = isVideoLike ? uploadedVideo || String(form.get("videoUrl") || "").trim() : "";
     const shopId = isProductNote && form.get("shopId") ? Number(form.get("shopId")) : null;
+    const productIds = parseProductIds(form.get("productIds"));
     const content = String(form.get("content") || "").trim();
     if (isVideoLike && !videoUrl) {
       showStatus(contentType === "LIVE" ? "直播预告需要填写直播地址或上传预告视频。" : "视频内容需要上传视频或填写视频地址。");
@@ -1821,6 +1894,10 @@ async function submitComposer(event) {
       showStatus("商品种草需要关联店铺 ID。");
       return;
     }
+    if (isProductNote && !productIds.length) {
+      showStatus("商品种草至少需要挂载一个商品。");
+      return;
+    }
     if (content.length < 12) {
       showStatus("正文再多写一点，会更像一篇有价值的探店笔记。");
       return;
@@ -1831,6 +1908,7 @@ async function submitComposer(event) {
       videoUrl,
       contentType,
       shopId,
+      productIds,
       content: mergeTopics(content, form.get("topics"))
     };
     await request("/blog", { method: "POST", body: JSON.stringify(payload) });

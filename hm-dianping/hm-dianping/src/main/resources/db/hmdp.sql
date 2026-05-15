@@ -48,6 +48,18 @@ ALTER TABLE `tb_blog`
   ADD COLUMN IF NOT EXISTS `content_type` varchar(32) NOT NULL DEFAULT 'IMAGE' COMMENT '内容类型：IMAGE/VIDEO/LIVE/PRODUCT_NOTE' AFTER `video_url`,
   ADD INDEX IF NOT EXISTS `idx_blog_content_type` (`content_type`, `create_time`);
 
+CREATE TABLE IF NOT EXISTS `tb_blog_product` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `blog_id` bigint UNSIGNED NOT NULL COMMENT '笔记id',
+  `product_id` bigint UNSIGNED NOT NULL COMMENT '挂载商品id',
+  `sort` int NOT NULL DEFAULT 0 COMMENT '展示顺序',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_blog_product` (`blog_id`, `product_id`) USING BTREE,
+  KEY `idx_product_blog` (`product_id`, `blog_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记挂载商品关系表';
+
 -- ----------------------------
 -- Table structure for tb_blog_comments
 -- ----------------------------

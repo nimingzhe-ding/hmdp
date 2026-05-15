@@ -1350,6 +1350,94 @@ img {
   font-size: 12px;
 }
 
+.note-products {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.note-product-list {
+  display: grid;
+  gap: 10px;
+}
+
+.note-product-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #f0f0f2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.note-product-main {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.note-product-main img {
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f3f3f4;
+}
+
+.note-product-main span,
+.note-product-main strong,
+.note-product-main small,
+.note-product-main b {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-product-main strong {
+  font-size: 14px;
+}
+
+.note-product-main small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.note-product-main b {
+  margin-top: 5px;
+  color: var(--brand);
+  font-size: 14px;
+}
+
+.note-product-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.note-product-actions button {
+  border: 0;
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.note-product-actions button:first-child {
+  background: #f1f1f3;
+  color: #222;
+}
+
 .shop-offer button {
   flex: 0 0 auto;
   min-height: 34px;

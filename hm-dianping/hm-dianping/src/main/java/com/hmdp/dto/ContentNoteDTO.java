@@ -3,6 +3,8 @@ package com.hmdp.dto;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import com.hmdp.entity.MallProduct;
 
 /**
  * 内容流笔记卡片 DTO。
@@ -28,4 +30,5 @@ public class ContentNoteDTO {
     private Boolean isFollow;
     private LocalDateTime createTime;
     private ContentShopDTO shop;
+    private List<MallProduct> products;
 }

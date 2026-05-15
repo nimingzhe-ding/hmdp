@@ -11,6 +11,7 @@ import lombok.experimental.Accessors;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * <p>
@@ -98,6 +99,12 @@ public class Blog implements Serializable {
      * 更新时间
      */
     private LocalDateTime updateTime;
+
+    /**
+     * 发布时挂载的商品 ID 列表，不直接映射到 tb_blog。
+     */
+    @TableField(exist = false)
+    private List<Long> productIds;
 
     public String getContentType() {
         return ContentType.resolve(contentType, videoUrl);

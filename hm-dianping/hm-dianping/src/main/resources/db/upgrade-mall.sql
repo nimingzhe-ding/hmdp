@@ -39,6 +39,18 @@ CREATE TABLE IF NOT EXISTS `tb_mall_product` (
   KEY `idx_sold` (`sold`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商城商品表';
 
+CREATE TABLE IF NOT EXISTS `tb_blog_product` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `blog_id` bigint UNSIGNED NOT NULL COMMENT '笔记id',
+  `product_id` bigint UNSIGNED NOT NULL COMMENT '挂载商品id',
+  `sort` int NOT NULL DEFAULT 0 COMMENT '展示顺序',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_blog_product` (`blog_id`, `product_id`) USING BTREE,
+  KEY `idx_product_blog` (`product_id`, `blog_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记挂载商品关系表';
+
 CREATE TABLE IF NOT EXISTS `tb_mall_cart_item` (
   `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   `user_id` bigint UNSIGNED NOT NULL COMMENT '用户id',

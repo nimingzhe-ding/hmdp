@@ -15,15 +15,19 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogCollect;
+import com.hmdp.entity.BlogProduct;
+import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.NoteEvent;
 import com.hmdp.entity.Shop;
 import com.hmdp.entity.User;
 import com.hmdp.entity.Voucher;
+import com.hmdp.mapper.BlogProductMapper;
 import com.hmdp.mapper.NoteEventMapper;
 import com.hmdp.service.IBlogCollectService;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IContentService;
 import com.hmdp.service.IFollowService;
+import com.hmdp.service.IMallProductService;
 import com.hmdp.service.IShopService;
 import com.hmdp.service.IUserService;
 import com.hmdp.service.IVoucherService;
@@ -67,6 +71,12 @@ public class ContentServiceImpl implements IContentService {
 
     @Resource
     private IBlogCollectService blogCollectService;
+
+    @Resource
+    private IMallProductService mallProductService;
+
+    @Resource
+    private BlogProductMapper blogProductMapper;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -341,12 +351,14 @@ public class ContentServiceImpl implements IContentService {
                 .toList();
         Map<Long, User> authorMap = loadAuthors(authorIds);
         Map<Long, Long> collectCountMap = loadCollectCounts(blogIds);
+        Map<Long, List<MallProduct>> blogProductsMap = loadBlogProducts(blogIds);
         UserDTO currentUser = UserHolder.getUser();
         Set<Long> collectedBlogIds = loadCollectedBlogIds(currentUser, blogIds);
         Set<Long> followedAuthorIds = loadFollowedAuthorIds(currentUser, authorIds);
 
         return blogs.stream()
-                .map(blog -> toNoteDTO(blog, authorMap, collectCountMap, collectedBlogIds, followedAuthorIds, currentUser))
+                .map(blog -> toNoteDTO(blog, authorMap, collectCountMap, blogProductsMap,
+                        collectedBlogIds, followedAuthorIds, currentUser))
                 .toList();
     }
 
@@ -354,6 +366,7 @@ public class ContentServiceImpl implements IContentService {
             Blog blog,
             Map<Long, User> authorMap,
             Map<Long, Long> collectCountMap,
+            Map<Long, List<MallProduct>> blogProductsMap,
             Set<Long> collectedBlogIds,
             Set<Long> followedAuthorIds,
             UserDTO currentUser) {
@@ -386,7 +399,44 @@ public class ContentServiceImpl implements IContentService {
             dto.setIsFollow(blog.getUserId() != null && followedAuthorIds.contains(blog.getUserId()));
         }
         dto.setCollects(collectCountMap.getOrDefault(blog.getId(), 0L));
+        dto.setProducts(blogProductsMap.getOrDefault(blog.getId(), List.of()));
         return dto;
+    }
+
+    private Map<Long, List<MallProduct>> loadBlogProducts(List<Long> blogIds) {
+        if (blogIds.isEmpty()) {
+            return Map.of();
+        }
+        List<BlogProduct> relations = blogProductMapper.selectList(
+                new QueryWrapper<BlogProduct>()
+                        .in("blog_id", blogIds)
+                        .orderByAsc("sort")
+                        .orderByAsc("id"));
+        if (relations.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> productIds = relations.stream()
+                .map(BlogProduct::getProductId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, MallProduct> productMap = mallProductService.query()
+                .in("id", productIds)
+                .eq("status", 1)
+                .list()
+                .stream()
+                .collect(Collectors.toMap(MallProduct::getId, Function.identity(), (first, second) -> first));
+        Map<Long, List<MallProduct>> result = new LinkedHashMap<>();
+        for (BlogProduct relation : relations) {
+            MallProduct product = productMap.get(relation.getProductId());
+            if (product != null) {
+                result.computeIfAbsent(relation.getBlogId(), key -> new ArrayList<>()).add(product);
+            }
+        }
+        return result;
     }
 
     private ContentShopDTO buildShopDTO(Long shopId) {

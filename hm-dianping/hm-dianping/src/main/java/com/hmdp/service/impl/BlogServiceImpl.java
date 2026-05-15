@@ -4,14 +4,19 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.BlogProduct;
 import com.hmdp.entity.Follow;
+import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.User;
 import com.hmdp.enums.ContentType;
 import com.hmdp.mapper.BlogMapper;
+import com.hmdp.mapper.BlogProductMapper;
+import com.hmdp.mapper.MallProductMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.service.IFollowService;
@@ -21,6 +26,7 @@ import com.hmdp.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.annotation.Resource;
 import java.util.ArrayList;
@@ -47,6 +53,10 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private IUserService userService;
     @Resource
     private IFollowService followService;
+    @Resource
+    private BlogProductMapper blogProductMapper;
+    @Resource
+    private MallProductMapper mallProductMapper;
 
     /**
      * 保存博文
@@ -54,11 +64,20 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
      * @return
      */
     @Override
+    @Transactional
     public Result saveBlog(Blog blog) {
         if (blog == null) {
             return Result.fail("笔记内容不能为空");
         }
-        blog.setContentType(ContentType.resolve(blog.getContentType(), blog.getVideoUrl()));
+        List<Long> productIds = normalizeProductIds(blog.getProductIds());
+        String contentType = ContentType.resolve(blog.getContentType(), blog.getVideoUrl());
+        if (ContentType.PRODUCT_NOTE.name().equals(contentType) && productIds.isEmpty()) {
+            return Result.fail("商品种草至少需要挂载一个商品");
+        }
+        if (!productIds.isEmpty() && !allProductsOnline(productIds)) {
+            return Result.fail("挂载商品不存在或未上架");
+        }
+        blog.setContentType(contentType);
         //获取登录用户
         Long id = UserHolder.getUser().getId();
         //保存博文
@@ -68,6 +87,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         if (!isSuccess) {
             return Result.fail("新增博文失败！");
         }
+        saveBlogProducts(blog.getId(), productIds);
         List<Follow> follows = followService.query().eq("follow_user_id", id).list();
         //推送粉丝
         for (Follow follow : follows) {
@@ -77,6 +97,38 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         }
         //返回id
         return Result.ok(blog.getId());
+    }
+
+    private List<Long> normalizeProductIds(List<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return List.of();
+        }
+        return productIds.stream()
+                .filter(productId -> productId != null && productId > 0)
+                .distinct()
+                .limit(6)
+                .toList();
+    }
+
+    private void saveBlogProducts(Long blogId, List<Long> productIds) {
+        if (blogId == null || productIds.isEmpty()) {
+            return;
+        }
+        for (int index = 0; index < productIds.size(); index++) {
+            BlogProduct relation = new BlogProduct()
+                    .setBlogId(blogId)
+                    .setProductId(productIds.get(index))
+                    .setSort(index);
+            blogProductMapper.insert(relation);
+        }
+    }
+
+    private boolean allProductsOnline(List<Long> productIds) {
+        Long count = mallProductMapper.selectCount(
+                new QueryWrapper<MallProduct>()
+                        .in("id", productIds)
+                        .eq("status", 1));
+        return count != null && count == productIds.size();
     }
 
     /**

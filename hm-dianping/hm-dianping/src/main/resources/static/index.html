@@ -200,6 +200,13 @@
             <button type="button" id="voucherAction">去看看</button>
           </div>
         </section>
+        <section class="note-products" id="noteProductBridge" hidden>
+          <div class="section-title">
+            <strong>内容同款</strong>
+            <span id="noteProductCount">0</span>
+          </div>
+          <div class="note-product-list" id="noteProductList"></div>
+        </section>
         <section class="note-smart" id="noteSmart" hidden>
           <strong>智能看点</strong>
           <p id="noteSmartText"></p>
@@ -345,6 +352,10 @@
       <label data-content-field="shop">
         关联店铺 ID
         <input name="shopId" type="number" min="1" placeholder="关联店铺，选填">
+      </label>
+      <label>
+        挂载商品 ID
+        <input name="productIds" placeholder="多个商品 ID 用英文逗号分隔，商品种草必填">
       </label>
       <label>
         话题标签
