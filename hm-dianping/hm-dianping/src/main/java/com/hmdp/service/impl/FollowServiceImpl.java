@@ -9,6 +9,7 @@ import com.hmdp.entity.User;
 import com.hmdp.mapper.FollowMapper;
 import com.hmdp.service.IFollowService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.service.IUserNotificationService;
 import com.hmdp.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,8 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private UserServiceImpl userService;
+    @Resource
+    private IUserNotificationService notificationService;
     /**
      * 关注或取关用户
      * @param followUserId
@@ -54,6 +57,9 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
             if (isSuccess) {
 
                 stringRedisTemplate.opsForSet().add(key,followUserId.toString());
+                User actor = userService.getById(userId);
+                notificationService.notifyUser(followUserId, userId, "FOLLOW", "你有新的关注者",
+                        (actor == null ? "有用户" : actor.getNickName()) + " 关注了你。", null, null);
             }
         }else{
             //取关，删除数据

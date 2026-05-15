@@ -29,6 +29,7 @@ public class ContentNoteDTO {
     private Boolean isLike;
     private Boolean isCollect;
     private Boolean isFollow;
+    private Boolean isOwner;
     private LocalDateTime createTime;
     private ContentShopDTO shop;
     private List<MallProduct> products;

@@ -690,11 +690,13 @@ public class ContentServiceImpl implements IContentService {
             dto.setIsLike(false);
             dto.setIsCollect(false);
             dto.setIsFollow(false);
+            dto.setIsOwner(false);
         } else {
             String likedKey = "blog:liked:" + blog.getId();
             dto.setIsLike(stringRedisTemplate.opsForZSet().score(likedKey, currentUser.getId().toString()) != null);
             dto.setIsCollect(collectedBlogIds.contains(blog.getId()));
             dto.setIsFollow(blog.getUserId() != null && followedAuthorIds.contains(blog.getUserId()));
+            dto.setIsOwner(blog.getUserId() != null && blog.getUserId().equals(currentUser.getId()));
         }
         dto.setCollects(collectCountMap.getOrDefault(blog.getId(), 0L));
         dto.setProducts(blogProductsMap.getOrDefault(blog.getId(), List.of()));

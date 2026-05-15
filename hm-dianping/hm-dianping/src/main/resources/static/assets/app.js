@@ -32,11 +32,13 @@ const state = {
   currentUser: null,
   replyTarget: null,
   commentSort: "hot",
+  editingNoteId: null,
   trends: [],
   wallet: new Set(JSON.parse(localStorage.getItem("hmdp_wallet") || "[]")),
   collected: new Set(JSON.parse(localStorage.getItem("hmdp_collected") || "[]")),
   followed: new Set(JSON.parse(localStorage.getItem("hmdp_followed") || "[]")),
-  aiSessionId: localStorage.getItem("hmdp_ai_session") || crypto.randomUUID()
+  aiSessionId: localStorage.getItem("hmdp_ai_session") || crypto.randomUUID(),
+  notificationFilter: "all"
 };
 
 localStorage.setItem("hmdp_ai_session", state.aiSessionId);
@@ -84,6 +86,9 @@ const els = {
   shopDialog: document.querySelector("#shopDialog"),
   productDialog: document.querySelector("#productDialog"),
   cartDialog: document.querySelector("#cartDialog"),
+  notificationDialog: document.querySelector("#notificationDialog"),
+  notificationList: document.querySelector("#notificationList"),
+  notificationBadge: document.querySelector("#notificationBadge"),
   merchantDialog: document.querySelector("#merchantDialog"),
   voucherList: document.querySelector("#voucherList"),
   mallVoucherList: document.querySelector("#mallVoucherList"),
@@ -272,6 +277,7 @@ function normalizeNote(note, index = 0) {
     products: Array.isArray(note.products) ? note.products.map(normalizeProduct) : [],
     creatorGrowth: note.creatorGrowth || null,
     relatedNotes: Array.isArray(note.relatedNotes) ? note.relatedNotes.map(item => normalizeNote(item)) : [],
+    isOwner: Boolean(note.isOwner || (state.currentUser?.id && Number(note.userId) === Number(state.currentUser.id))),
     tags: note.tags || "",
     ratio: [0.78, 1, 1.14, 1.28, 0.92][index % 5]
   };
@@ -377,6 +383,122 @@ function renderUser(user) {
     return;
   }
   document.querySelector("#loginButton").textContent = "已登录";
+}
+
+async function refreshNotificationBadge() {
+  if (!token() || !els.notificationBadge) {
+    if (els.notificationBadge) els.notificationBadge.hidden = true;
+    return;
+  }
+  try {
+    const data = await request("/notifications/unread-count");
+    const count = Number(data?.count || 0);
+    els.notificationBadge.textContent = count > 99 ? "99+" : String(count);
+    els.notificationBadge.hidden = count <= 0;
+  } catch {
+    els.notificationBadge.hidden = true;
+  }
+}
+
+async function openNotificationDialog() {
+  if (!requireLogin()) return;
+  els.notificationList.innerHTML = `<p class="empty-text">正在加载消息...</p>`;
+  els.notificationDialog.showModal();
+  const unreadOnly = state.notificationFilter === "unread";
+  try {
+    const list = await request(`/notifications?unreadOnly=${unreadOnly}`);
+    renderNotifications(Array.isArray(list) ? list : []);
+  } catch {
+    els.notificationList.innerHTML = `<p class="empty-text">消息加载失败，请稍后再试。</p>`;
+  }
+}
+
+function renderNotifications(list) {
+  if (!list.length) {
+    els.notificationList.innerHTML = `<p class="empty-text">暂时还没有消息。</p>`;
+    return;
+  }
+  els.notificationList.innerHTML = list.map(item => `
+    <article class="notification-item${item.readFlag ? "" : " is-unread"}" data-id="${item.id}" data-blog-id="${item.blogId || ""}" data-order-id="${item.orderId || ""}" data-type="${item.type || ""}">
+      <div class="notification-item-body">
+        <strong>${escapeHtml(item.title || notificationTypeLabel(item.type))}</strong>
+        <span>${escapeHtml(item.content || "")}</span>
+        <small><span class="notification-type-tag tag-${(item.type || "").split("_")[0].toLowerCase()}">${notificationTypeLabel(item.type)}</span> · ${formatTime(item.createTime)}</small>
+      </div>
+      <div class="notification-item-actions">
+        ${item.readFlag ? "" : `<button class="notification-action-btn" data-action="read" title="标记已读"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z" fill="currentColor"/></svg></button>`}
+        <button class="notification-action-btn" data-action="delete" title="删除"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z" fill="currentColor"/></svg></button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function notificationTypeLabel(type) {
+  return {
+    LIKE: "点赞",
+    COLLECT: "收藏",
+    COMMENT: "评论",
+    REPLY: "回复",
+    FOLLOW: "关注",
+    ORDER_CREATED: "订单",
+    ORDER_PAID: "订单",
+    ORDER_SHIPPED: "发货",
+    ORDER_COMPLETED: "完成",
+    ORDER_CANCELLED: "取消",
+    ORDER_REFUNDING: "退款",
+    ORDER_REFUND_APPROVED: "退款",
+    ORDER_REFUND_REJECTED: "退款"
+  }[type] || "通知";
+}
+
+async function markNotificationsRead() {
+  if (!requireLogin()) return;
+  await request("/notifications/read", { method: "POST" });
+  await refreshNotificationBadge();
+  await openNotificationDialog();
+}
+
+async function markSingleNotificationRead(id) {
+  try {
+    await request(`/notifications/${id}/read`, { method: "POST" });
+    await refreshNotificationBadge();
+    const item = els.notificationList.querySelector(`[data-id="${id}"]`);
+    if (item) {
+      item.classList.remove("is-unread");
+      const readBtn = item.querySelector('[data-action="read"]');
+      if (readBtn) readBtn.remove();
+    }
+  } catch { /* ignore */ }
+}
+
+async function deleteNotification(id) {
+  try {
+    await request(`/notifications/${id}`, { method: "DELETE" });
+    await refreshNotificationBadge();
+    const item = els.notificationList.querySelector(`[data-id="${id}"]`);
+    if (item) {
+      item.style.opacity = "0";
+      item.style.transform = "translateX(100%)";
+      setTimeout(() => {
+        item.remove();
+        if (!els.notificationList.querySelector(".notification-item")) {
+          els.notificationList.innerHTML = `<p class="empty-text">暂时还没有消息。</p>`;
+        }
+      }, 250);
+    }
+  } catch { /* ignore */ }
+}
+
+function navigateFromNotification(item) {
+  const blogId = item.dataset.blogId;
+  const orderId = item.dataset.orderId;
+  const type = item.dataset.type;
+  els.notificationDialog.close();
+  if (blogId && (type === "LIKE" || type === "COLLECT" || type === "COMMENT" || type === "REPLY")) {
+    openDrawer({ id: Number(blogId) });
+  } else if (orderId && type.startsWith("ORDER_")) {
+    openOrdersDialog();
+  }
 }
 
 async function loadProfileStats() {
@@ -710,6 +832,12 @@ async function openDrawer(note) {
   document.querySelector("#drawerCollect").onclick = () => toggleCollect(note);
   document.querySelector("#drawerFollow").onclick = () => toggleFollow(note);
   document.querySelector("#drawerAnalyze").onclick = () => analyzeCurrentNote(note);
+  const editButton = document.querySelector("#drawerEdit");
+  const deleteButton = document.querySelector("#drawerDelete");
+  editButton.hidden = !note.isOwner;
+  deleteButton.hidden = !note.isOwner;
+  editButton.onclick = () => openComposerForEdit(note);
+  deleteButton.onclick = () => deleteCurrentNote(note);
   els.drawer.classList.add("is-open");
   els.drawer.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
@@ -2140,6 +2268,7 @@ function collectComposerDraft() {
 }
 
 function saveComposerDraft(showTip = false) {
+  if (state.editingNoteId) return;
   const draft = collectComposerDraft();
   if (!hasComposerDraft(draft)) {
     localStorage.removeItem(COMPOSER_DRAFT_KEY);
@@ -2151,6 +2280,7 @@ function saveComposerDraft(showTip = false) {
 }
 
 function restoreComposerDraft() {
+  if (state.editingNoteId) return false;
   const draft = readComposerDraft();
   if (!hasComposerDraft(draft)) {
     renderComposerDraftState();
@@ -2206,6 +2336,30 @@ function setComposerVideoUrl(url) {
   input.value = url;
 }
 
+function fillComposerFromNote(note) {
+  const form = els.composerForm.elements;
+  const typeInput = [...els.contentTypeInputs].find(input => input.value === note.contentType);
+  if (typeInput) typeInput.checked = true;
+  form.title.value = note.title || "";
+  form.images.value = Array.isArray(note.images) ? note.images.join(",") : (note.images || note.image || "");
+  form.videoUrl.value = note.videoUrl || "";
+  form.shopId.value = note.shopId || "";
+  form.productIds.value = Array.isArray(note.products) ? note.products.map(product => product.id).filter(Boolean).join(",") : "";
+  form.tags.value = note.tags || "探店";
+  form.topics.value = "";
+  form.content.value = note.content || "";
+  els.uploadPreview.innerHTML = "";
+  els.videoPreview.innerHTML = note.videoUrl ? `<video src="${normalizeMedia(note.videoUrl)}" controls muted playsinline></video>` : "";
+  applyComposerType();
+}
+
+function resetComposerMode() {
+  state.editingNoteId = null;
+  if (els.composerTitle) els.composerTitle.dataset.mode = "create";
+  const submitButton = els.composerForm.querySelector(".publish-button");
+  if (submitButton) submitButton.textContent = "发布";
+}
+
 function applyComposerType() {
   const contentType = getComposerContentType();
   const isVideoLike = ["VIDEO", "LIVE"].includes(contentType);
@@ -2217,7 +2371,7 @@ function applyComposerType() {
     LIVE: "发布直播预告"
   };
   if (els.composerTitle) {
-    els.composerTitle.textContent = titles[contentType] || "发布内容";
+    els.composerTitle.textContent = state.editingNoteId ? "编辑内容" : (titles[contentType] || "发布内容");
   }
   els.contentFields.forEach(field => {
     const scope = field.dataset.contentField;
@@ -2327,20 +2481,26 @@ async function submitComposer(event) {
       tags: form.get("tags"),
       content: mergeTopics(content, form.get("topics"))
     };
-    await request("/blog", { method: "POST", body: JSON.stringify(payload) });
-    clearComposerDraft();
+    const editingId = state.editingNoteId;
+    await request(editingId ? `/blog/${editingId}` : "/blog", {
+      method: editingId ? "PUT" : "POST",
+      body: JSON.stringify(payload)
+    });
+    if (!editingId) clearComposerDraft();
+    resetComposerMode();
     els.composer.close();
     els.composerForm.reset();
     els.uploadPreview.innerHTML = "";
     els.videoPreview.innerHTML = "";
     applyComposerType();
+    if (state.currentNote) closeDrawer();
     resetAndLoad();
   } catch {
     saveComposerDraft(true);
     showStatus("发布失败，内容已保存到草稿箱。请确认已登录，且图片、店铺信息有效。");
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "发布";
+    submitButton.textContent = state.editingNoteId ? "保存" : "发布";
   }
 }
 
@@ -2737,6 +2897,9 @@ els.clearComposerDraft?.addEventListener("click", () => {
   clearComposerDraft(true);
   showStatus("草稿已清空。");
 });
+els.composer.addEventListener("close", () => {
+  resetComposerMode();
+});
 
 document.querySelectorAll("[data-feed]").forEach(button => {
   button.addEventListener("click", () => switchFeed(button.dataset.feed));
@@ -2753,10 +2916,44 @@ document.querySelectorAll("[data-smart-query]").forEach(button => {
 document.querySelectorAll("[data-close-drawer]").forEach(item => item.addEventListener("click", closeDrawer));
 function openComposer() {
   if (!requireLogin()) return;
+  resetComposerMode();
   if (!restoreComposerDraft()) {
+    els.composerForm.reset();
+    els.uploadPreview.innerHTML = "";
+    els.videoPreview.innerHTML = "";
     applyComposerType();
   }
   els.composer.showModal();
+}
+
+function openComposerForEdit(note) {
+  if (!note?.isOwner || !requireLogin()) return;
+  state.editingNoteId = note.id;
+  fillComposerFromNote(note);
+  const submitButton = els.composerForm.querySelector(".publish-button");
+  if (submitButton) submitButton.textContent = "保存";
+  renderComposerDraftState();
+  els.composer.showModal();
+}
+
+async function deleteCurrentNote(note) {
+  if (!note?.isOwner || !requireLogin()) return;
+  const confirmed = window.confirm("确定删除这篇笔记吗？删除后不可恢复。");
+  if (!confirmed) return;
+  try {
+    await request(`/blog/${note.id}`, { method: "DELETE" });
+    state.notes = state.notes.filter(item => String(item.id) !== String(note.id));
+    state.videoNotes = state.videoNotes.filter(item => String(item.id) !== String(note.id));
+    document.querySelectorAll(".note-card").forEach(card => {
+      const title = card.querySelector(".note-title")?.textContent || "";
+      if (title === note.title) card.remove();
+    });
+    closeDrawer();
+    showStatus("笔记已删除。");
+    resetAndLoad(false);
+  } catch (error) {
+    showStatus(error.message || "删除失败，请稍后再试。");
+  }
 }
 
 document.querySelector("#openComposer").addEventListener("click", openComposer);
@@ -2771,6 +2968,30 @@ document.querySelector("#openOrders").addEventListener("click", openOrdersDialog
 document.querySelector("#openMerchantCenter").addEventListener("click", openMerchantCenter);
 document.querySelector("#closeProductDialog").addEventListener("click", () => els.productDialog.close());
 document.querySelector("#closeCartDialog").addEventListener("click", () => els.cartDialog.close());
+document.querySelector("#openNotifications").addEventListener("click", openNotificationDialog);
+document.querySelector("#closeNotificationDialog").addEventListener("click", () => els.notificationDialog.close());
+document.querySelector("#markNotificationsRead").addEventListener("click", markNotificationsRead);
+els.notificationList.addEventListener("click", (e) => {
+  const actionBtn = e.target.closest("[data-action]");
+  const item = e.target.closest(".notification-item");
+  if (!item) return;
+  const id = Number(item.dataset.id);
+  if (actionBtn) {
+    e.stopPropagation();
+    if (actionBtn.dataset.action === "read") markSingleNotificationRead(id);
+    else if (actionBtn.dataset.action === "delete") deleteNotification(id);
+  } else {
+    navigateFromNotification(item);
+  }
+});
+document.querySelectorAll(".notification-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".notification-tab").forEach(t => t.classList.remove("is-active"));
+    tab.classList.add("is-active");
+    state.notificationFilter = tab.dataset.filter;
+    openNotificationDialog();
+  });
+});
 document.querySelector("#closeMerchantDialog").addEventListener("click", () => els.merchantDialog.close());
 document.querySelector("#addProductCart").addEventListener("click", addCurrentProductToCart);
 document.querySelector("#buyProductNow").addEventListener("click", buyCurrentProductNow);
@@ -2821,5 +3042,7 @@ window.addEventListener("scroll", () => {
 }, { passive: true });
 
 initUser();
+refreshNotificationBadge();
+setInterval(refreshNotificationBadge, 60000);
 loadCategories();
 loadNotes();

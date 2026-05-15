@@ -11,6 +11,8 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogLike;
 import com.hmdp.entity.BlogProduct;
+import com.hmdp.entity.BlogCollect;
+import com.hmdp.entity.BlogComments;
 import com.hmdp.entity.ContentTopic;
 import com.hmdp.entity.Follow;
 import com.hmdp.entity.MallProduct;
@@ -19,11 +21,14 @@ import com.hmdp.enums.ContentType;
 import com.hmdp.mapper.BlogLikeMapper;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.mapper.BlogProductMapper;
+import com.hmdp.mapper.BlogCollectMapper;
+import com.hmdp.mapper.BlogCommentsMapper;
 import com.hmdp.mapper.ContentTopicMapper;
 import com.hmdp.mapper.MallProductMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.service.IFollowService;
+import com.hmdp.service.IUserNotificationService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
@@ -36,6 +41,7 @@ import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.regex.Matcher;
@@ -66,7 +72,13 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Resource
     private BlogLikeMapper blogLikeMapper;
     @Resource
+    private BlogCollectMapper blogCollectMapper;
+    @Resource
+    private BlogCommentsMapper blogCommentsMapper;
+    @Resource
     private ContentTopicMapper contentTopicMapper;
+    @Resource
+    private IUserNotificationService notificationService;
 
     private static final Pattern TOPIC_PATTERN = Pattern.compile("#([\\p{IsHan}\\w\\-]{1,30})");
 
@@ -111,6 +123,80 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         }
         //返回id
         return Result.ok(blog.getId());
+    }
+
+    @Override
+    @Transactional
+    public Result updateOwnBlog(Long id, Blog blog) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("请先登录");
+        }
+        if (id == null || blog == null) {
+            return Result.fail("笔记内容不能为空");
+        }
+        Blog existing = getById(id);
+        if (existing == null) {
+            return Result.fail("笔记不存在");
+        }
+        if (!Objects.equals(existing.getUserId(), user.getId())) {
+            return Result.fail("只能编辑自己的笔记");
+        }
+        if (StrUtil.isBlank(blog.getTitle()) || StrUtil.isBlank(blog.getContent())) {
+            return Result.fail("标题和正文不能为空");
+        }
+        List<Long> productIds = normalizeProductIds(blog.getProductIds());
+        String contentType = ContentType.resolve(blog.getContentType(), blog.getVideoUrl());
+        if (ContentType.PRODUCT_NOTE.name().equals(contentType) && productIds.isEmpty()) {
+            return Result.fail("商品种草至少需要挂载一个商品");
+        }
+        if (!productIds.isEmpty() && !allProductsOnline(productIds)) {
+            return Result.fail("挂载商品不存在或未上架");
+        }
+        update()
+                .set("shop_id", blog.getShopId())
+                .set("title", StrUtil.trim(blog.getTitle()))
+                .set("images", StrUtil.trim(blog.getImages()))
+                .set("video_url", StrUtil.trim(blog.getVideoUrl()))
+                .set("content_type", contentType)
+                .set("tags", normalizeTags(blog.getTags()))
+                .set("content", blog.getContent())
+                .eq("id", id)
+                .eq("user_id", user.getId())
+                .update();
+        replaceBlogProducts(id, productIds);
+        syncBlogTopics(blog.getContent());
+        return Result.ok(id);
+    }
+
+    @Override
+    @Transactional
+    public Result deleteOwnBlog(Long id) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("请先登录");
+        }
+        if (id == null) {
+            return Result.fail("笔记ID不能为空");
+        }
+        Blog blog = getById(id);
+        if (blog == null) {
+            return Result.fail("笔记不存在");
+        }
+        if (!Objects.equals(blog.getUserId(), user.getId())) {
+            return Result.fail("只能删除自己的笔记");
+        }
+        removeById(id);
+        blogProductMapper.delete(new QueryWrapper<BlogProduct>().eq("blog_id", id));
+        blogLikeMapper.delete(new QueryWrapper<BlogLike>().eq("blog_id", id));
+        blogCollectMapper.delete(new QueryWrapper<BlogCollect>().eq("blog_id", id));
+        blogCommentsMapper.delete(new QueryWrapper<BlogComments>().eq("blog_id", id));
+        stringRedisTemplate.delete("blog:liked:" + id);
+        List<Follow> follows = followService.query().eq("follow_user_id", blog.getUserId()).list();
+        for (Follow follow : follows) {
+            stringRedisTemplate.opsForZSet().remove("feed:" + follow.getUserId(), id.toString());
+        }
+        return Result.ok(id);
     }
 
     private List<Long> normalizeProductIds(List<Long> productIds) {
@@ -173,6 +259,14 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                     .setSort(index);
             blogProductMapper.insert(relation);
         }
+    }
+
+    private void replaceBlogProducts(Long blogId, List<Long> productIds) {
+        if (blogId == null) {
+            return;
+        }
+        blogProductMapper.delete(new QueryWrapper<BlogProduct>().eq("blog_id", blogId));
+        saveBlogProducts(blogId, productIds);
     }
 
     private boolean allProductsOnline(List<Long> productIds) {
@@ -273,6 +367,11 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                         .setBlogId(id);
                 blogLikeMapper.insert(blogLike);
                 stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
+                Blog blog = getById(id);
+                if (blog != null) {
+                    notificationService.notifyUser(blog.getUserId(), userId, "LIKE", "有人点赞了你的笔记",
+                            "你的笔记《" + StrUtil.blankToDefault(blog.getTitle(), "未命名笔记") + "》收到了新的点赞。", id, null);
+                }
             }
 
         }else{

@@ -9,6 +9,7 @@ import com.hmdp.entity.User;
 import com.hmdp.service.IBlogCommentsService;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IUserService;
+import com.hmdp.service.IUserNotificationService;
 import com.hmdp.utils.UserHolder;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -45,6 +46,9 @@ public class BlogCommentsController {
 
     @Resource
     private IBlogService blogService;
+
+    @Resource
+    private IUserNotificationService notificationService;
 
     /**
      * 查询笔记评论流。
@@ -134,7 +138,24 @@ public class BlogCommentsController {
                 .setSql("comments = IFNULL(comments, 0) + 1")
                 .eq("id", comment.getBlogId())
                 .update();
+        notifyCommentReceivers(comment, user.getId());
         return Result.ok(commentResult(comment.getId(), comment.getBlogId()));
+    }
+
+    private void notifyCommentReceivers(BlogComments comment, Long actorUserId) {
+        var blog = blogService.getById(comment.getBlogId());
+        String title = blog == null ? "未命名笔记" : Objects.toString(blog.getTitle(), "未命名笔记");
+        if (blog != null) {
+            notificationService.notifyUser(blog.getUserId(), actorUserId, "COMMENT", "你的笔记有新评论",
+                    "你的笔记《" + title + "》收到了新评论：" + comment.getContent(), comment.getBlogId(), null);
+        }
+        if (comment.getAnswerId() != null && comment.getAnswerId() > 0) {
+            BlogComments answer = commentsService.getById(comment.getAnswerId());
+            if (answer != null) {
+                notificationService.notifyUser(answer.getUserId(), actorUserId, "REPLY", "有人回复了你的评论",
+                        "你在《" + title + "》下的评论收到了回复：" + comment.getContent(), comment.getBlogId(), null);
+            }
+        }
     }
 
     /**

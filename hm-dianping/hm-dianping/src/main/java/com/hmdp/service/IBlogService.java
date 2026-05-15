@@ -49,6 +49,16 @@ public interface IBlogService extends IService<Blog> {
     Result saveBlog(Blog blog);
 
     /**
+     * 作者编辑自己的笔记。
+     */
+    Result updateOwnBlog(Long id, Blog blog);
+
+    /**
+     * 作者删除自己的笔记。
+     */
+    Result deleteOwnBlog(Long id);
+
+    /**
      * 查询关注博文
      * @param max
      * @param offset

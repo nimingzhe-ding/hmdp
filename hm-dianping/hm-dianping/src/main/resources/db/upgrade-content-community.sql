@@ -68,6 +68,24 @@ CREATE TABLE IF NOT EXISTS `tb_content_topic` (
   KEY `idx_topic_heat` (`heat`, `note_count`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='内容话题表';
 
+CREATE TABLE IF NOT EXISTS `tb_user_notification` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '接收用户id',
+  `actor_user_id` bigint UNSIGNED NULL COMMENT '触发用户id',
+  `type` varchar(32) NOT NULL COMMENT '通知类型：LIKE/COLLECT/COMMENT/FOLLOW/ORDER_*',
+  `title` varchar(80) NOT NULL COMMENT '通知标题',
+  `content` varchar(255) NULL COMMENT '通知内容',
+  `blog_id` bigint UNSIGNED NULL COMMENT '关联笔记id',
+  `order_id` bigint NULL COMMENT '关联订单id',
+  `payload` varchar(1024) NULL COMMENT '扩展数据',
+  `read_flag` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否已读',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_user_read_time` (`user_id`, `read_flag`, `create_time`) USING BTREE,
+  KEY `idx_blog_id` (`blog_id`) USING BTREE,
+  KEY `idx_order_id` (`order_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户消息通知表';
+
 CALL add_column_if_missing('tb_blog', 'content_type', 'varchar(32) NOT NULL DEFAULT ''IMAGE'' COMMENT ''内容类型：IMAGE/VIDEO/LIVE/PRODUCT_NOTE'' AFTER `video_url`');
 CALL add_column_if_missing('tb_blog', 'tags', 'varchar(128) NULL COMMENT ''内容标签，多个标签用英文逗号分隔'' AFTER `content_type`');
 

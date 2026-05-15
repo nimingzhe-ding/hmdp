@@ -19,6 +19,7 @@ import com.hmdp.mapper.MerchantNotificationMapper;
 import com.hmdp.service.IMallOrderService;
 import com.hmdp.service.IMallProductService;
 import com.hmdp.service.IMerchantService;
+import com.hmdp.service.IUserNotificationService;
 import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.UserHolder;
 import jakarta.annotation.Resource;
@@ -48,6 +49,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     @Resource
     private MerchantNotificationMapper notificationMapper;
+
+    @Resource
+    private IUserNotificationService userNotificationService;
 
     // ==================== 店铺 ====================
 
@@ -240,6 +244,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                 .eq("merchant_id", merchant.getId())
                 .eq("status", MallOrderServiceImpl.STATUS_PENDING_SHIP)
                 .update();
+        if (updated) {
+            userNotificationService.notifyUser(order.getUserId(), null, "ORDER_SHIPPED", "商家已发货",
+                    "你购买的「" + order.getProductTitle() + "」已发货。", null, order.getId());
+        }
         if (!updated) {
             return Result.fail("当前订单状态不能发货");
         }
@@ -275,6 +283,8 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                     .eq("id", orderId)
                     .eq("status", MallOrderServiceImpl.STATUS_REFUNDING)
                     .update();
+            userNotificationService.notifyUser(order.getUserId(), null, "ORDER_REFUND_APPROVED", "退款已通过",
+                    "你购买的「" + order.getProductTitle() + "」退款已通过，款项将原路返回。", null, order.getId());
             return Result.ok("已同意退款");
         } else {
             // 拒绝退款：回到已支付状态
@@ -287,6 +297,8 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
             if (!updated) {
                 return Result.fail("操作失败");
             }
+            userNotificationService.notifyUser(order.getUserId(), null, "ORDER_REFUND_REJECTED", "退款被拒绝",
+                    "你购买的「" + order.getProductTitle() + "」的退款申请已被商家拒绝。", null, order.getId());
             return Result.ok("已拒绝退款");
         }
     }
