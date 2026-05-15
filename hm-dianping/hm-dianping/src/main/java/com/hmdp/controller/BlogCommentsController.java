@@ -2,6 +2,7 @@ package com.hmdp.controller;
 
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.conditions.query.QueryChainWrapper;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.BlogComments;
@@ -10,6 +11,7 @@ import com.hmdp.service.IBlogService;
 import com.hmdp.service.IBlogCommentsService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.UserHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.annotation.Resource;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -57,13 +60,20 @@ public class BlogCommentsController {
     @GetMapping("/of/blog")
     public Result queryComments(
             @RequestParam("blogId") Long blogId,
-            @RequestParam(value = "current", defaultValue = "1") Integer current) {
-        Page<BlogComments> page = commentsService.query()
+            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam(value = "sort", defaultValue = "hot") String sort) {
+        QueryChainWrapper<BlogComments> query = commentsService.query()
                 .eq("blog_id", blogId)
                 .eq("parent_id", 0)
-                .orderByDesc("liked")
-                .orderByDesc("create_time")
-                .page(new Page<>(current, 20));
+                .eq("status", 0);
+        if ("new".equals(sort)) {
+            query.orderByDesc("create_time");
+        } else if ("old".equals(sort)) {
+            query.orderByAsc("create_time");
+        } else {
+            query.orderByDesc("liked").orderByDesc("create_time");
+        }
+        Page<BlogComments> page = query.page(new Page<>(current, 20));
         List<BlogComments> comments = page.getRecords();
         List<Long> parentIds = comments.stream()
                 .map(BlogComments::getId)
@@ -73,6 +83,7 @@ public class BlogCommentsController {
                 : commentsService.query()
                 .eq("blog_id", blogId)
                 .in("parent_id", parentIds)
+                .eq("status", 0)
                 .orderByAsc("create_time")
                 .list();
         List<BlogComments> allComments = new ArrayList<>();
@@ -93,7 +104,7 @@ public class BlogCommentsController {
         List<Map<String, Object>> records = comments.stream()
                 .map(comment -> toCommentMap(comment, userMap, replyMap.getOrDefault(comment.getId(), List.of())))
                 .toList();
-        return Result.ok(records, page.getTotal());
+        return Result.ok(records, countVisibleComments(blogId));
     }
 
     /**
@@ -118,14 +129,14 @@ public class BlogCommentsController {
         Long answerId = comment.getAnswerId() == null ? parentId : comment.getAnswerId();
         if (parentId > 0) {
             BlogComments parentComment = commentsService.getById(parentId);
-            if (parentComment == null || !comment.getBlogId().equals(parentComment.getBlogId())) {
+            if (parentComment == null || !comment.getBlogId().equals(parentComment.getBlogId()) || !isVisible(parentComment)) {
                 return Result.fail("回复的评论不存在");
             }
         }
         comment.setParentId(parentId);
         comment.setAnswerId(answerId);
         comment.setLiked(0);
-        comment.setStatus(false);
+        comment.setStatus(0);
         commentsService.save(comment);
         blogService.update()
                 .setSql("comments = IFNULL(comments, 0) + 1")
@@ -168,5 +179,66 @@ public class BlogCommentsController {
                 .eq("id", commentId)
                 .update();
         return success ? Result.ok() : Result.fail("评论不存在");
+    }
+
+    /**
+     * 删除评论（软删除，仅本人可删）。
+     * 同时将笔记评论数 -1。
+     */
+    @DeleteMapping("/{id}")
+    public Result deleteComment(@PathVariable("id") Long commentId) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("请先登录");
+        }
+        BlogComments comment = commentsService.getById(commentId);
+        if (comment == null || !isVisible(comment)) {
+            return Result.fail("评论不存在");
+        }
+        if (!comment.getUserId().equals(user.getId())) {
+            return Result.fail("无权删除");
+        }
+        comment.setStatus(2);
+        comment.setUpdateTime(LocalDateTime.now());
+        commentsService.updateById(comment);
+        blogService.update()
+                .setSql("comments = GREATEST(IFNULL(comments, 0) - 1, 0)")
+                .eq("id", comment.getBlogId())
+                .update();
+        return Result.ok();
+    }
+
+    /**
+     * 举报评论。
+     * 将评论状态标记为 1（被举报），由运营后台审核。
+     */
+    @PutMapping("/report/{id}")
+    public Result reportComment(@PathVariable("id") Long commentId) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("请先登录");
+        }
+        BlogComments comment = commentsService.getById(commentId);
+        if (comment == null || !isVisible(comment)) {
+            return Result.fail("评论不存在");
+        }
+        if (comment.getUserId().equals(user.getId())) {
+            return Result.fail("不能举报自己的评论");
+        }
+        comment.setStatus(1);
+        comment.setUpdateTime(LocalDateTime.now());
+        commentsService.updateById(comment);
+        return Result.ok();
+    }
+
+    private boolean isVisible(BlogComments comment) {
+        return comment != null && comment.getStatus() != null && comment.getStatus() == 0;
+    }
+
+    private Long countVisibleComments(Long blogId) {
+        return commentsService.query()
+                .eq("blog_id", blogId)
+                .eq("status", 0)
+                .count();
     }
 }
