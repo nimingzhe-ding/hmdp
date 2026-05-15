@@ -105,8 +105,50 @@ const els = {
   profileAvatar: document.querySelector("#profileAvatar"),
   profileName: document.querySelector("#profileName"),
   profileHint: document.querySelector("#profileHint"),
-  trendList: document.querySelector("#trendList")
+  trendList: document.querySelector("#trendList"),
+  toastContainer: document.querySelector("#toastContainer")
 };
+
+// ------------------------------
+// Toast 通知
+// ------------------------------
+function showToast(message, type = "info", duration = 2500) {
+  const container = els.toastContainer;
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("toast-out");
+    toast.addEventListener("animationend", () => toast.remove());
+  }, duration);
+}
+
+// ------------------------------
+// 骨架屏
+// ------------------------------
+function renderSkeletons(count = 8) {
+  let html = "";
+  for (let i = 0; i < count; i++) {
+    const ratio = [0.8, 1.0, 1.2, 1.4][i % 4];
+    html += `
+      <div class="skeleton-card">
+        <div class="skeleton skeleton-cover" style="aspect-ratio: 3 / ${3 * ratio}"></div>
+        <div class="skeleton skeleton-line"></div>
+        <div class="skeleton skeleton-line"></div>
+        <div class="skeleton-meta">
+          <div class="skeleton skeleton-avatar"></div>
+          <div class="skeleton skeleton-name"></div>
+        </div>
+      </div>`;
+  }
+  els.feed.innerHTML = html;
+}
+
+function clearSkeletons() {
+  els.feed.querySelectorAll(".skeleton-card").forEach(el => el.remove());
+}
 
 // ------------------------------
 // Demo data used when backend data is not available
@@ -538,7 +580,11 @@ async function loadNotes() {
     return;
   }
   state.loading = true;
-  els.loading.textContent = "正在加载更多笔记...";
+  if (state.page === 1) {
+    renderSkeletons(8);
+  } else {
+    els.loading.textContent = "正在加载更多笔记...";
+  }
   try {
     const data = await request(buildContentUrl());
     let notes = (Array.isArray(data?.list) ? data.list : []).map(normalizeNote);
@@ -586,6 +632,7 @@ function buildContentUrl() {
 }
 
 function appendNotes(notes) {
+  clearSkeletons();
   const fragment = document.createDocumentFragment();
   notes.forEach(note => fragment.appendChild(createNoteCard(note)));
   els.feed.appendChild(fragment);
@@ -618,7 +665,7 @@ function createNoteCard(note) {
           <img class="avatar" src="${normalizeImage(note.icon)}" alt="">
           <span>${escapeHtml(note.name)}</span>
         </span>
-        <span class="like-count"><span aria-hidden="true">♥</span>${note.liked}</span>
+        <span class="like-count"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.2 10.7 20C5.8 15.6 2.6 12.7 2.6 9a5 5 0 0 1 8.7-3.4A5 5 0 0 1 20 9c0 3.7-3.2 6.6-8.1 11l-1.3 1.2Z"/></svg>${note.liked}</span>
       </div>
     </div>
   `;
@@ -649,12 +696,10 @@ async function openDrawer(note) {
   document.querySelector("#drawerContent").textContent = note.content || "这个作者还没有填写更多内容。";
   renderShopBridge(note.shop);
   renderNoteProducts(note.products);
-  document.querySelector("#drawerLike").textContent = `♥ ${note.liked}`;
-  document.querySelector("#drawerCollect").textContent = state.collected.has(String(note.id)) ? "★ 已收藏" : "☆ 收藏";
-  document.querySelector("#drawerFollow").textContent = state.followed.has(String(note.userId)) ? "已关注" : "关注";
+  document.querySelector("#drawerLike").innerHTML = `♥ 赞 ${note.liked}`;
   if (note.isCollect) state.collected.add(String(note.id));
   if (note.isFollow) state.followed.add(String(note.userId));
-  document.querySelector("#drawerCollect").textContent = state.collected.has(String(note.id)) ? "★ 已收藏" : "☆ 收藏";
+  document.querySelector("#drawerCollect").innerHTML = state.collected.has(String(note.id)) ? "★ 已收藏" : "☆ 收藏";
   document.querySelector("#drawerFollow").textContent = state.followed.has(String(note.userId)) ? "已关注" : "关注";
   document.querySelector("#drawerLike").onclick = () => likeNote(note);
   document.querySelector("#drawerCollect").onclick = () => toggleCollect(note);
