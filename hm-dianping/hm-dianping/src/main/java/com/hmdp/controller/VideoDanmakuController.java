@@ -12,7 +12,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 视频弹幕接口。
+ * Video danmaku API.
+ * Public reads stay anonymous; sending is protected by LoginInterceptor.
  */
 @RestController
 @RequestMapping("/video-danmaku")
@@ -21,7 +22,7 @@ public class VideoDanmakuController {
     @Resource
     private IVideoDanmakuService danmakuService;
 
-    @GetMapping("/{blogId}")
+    @GetMapping("/public/{blogId}")
     public Result list(@PathVariable("blogId") Long blogId) {
         return danmakuService.listByBlog(blogId);
     }

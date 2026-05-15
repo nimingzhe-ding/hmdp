@@ -739,8 +739,8 @@ function defaultDanmaku(noteId) {
 
 async function loadDanmaku(noteId) {
   try {
-    const data = await request(`/video-danmaku/${noteId}`);
-    state.danmakuStore[String(noteId)] = Array.isArray(data) && data.length ? data : defaultDanmaku(noteId);
+    const data = await request(`/video-danmaku/public/${noteId}`);
+    state.danmakuStore[String(noteId)] = Array.isArray(data) ? data : [];
   } catch {
     state.danmakuStore[String(noteId)] = defaultDanmaku(noteId);
   }
@@ -765,7 +765,9 @@ function shootDanmaku(layer, text, lane) {
   const item = document.createElement("span");
   item.className = "danmaku-item";
   item.textContent = text;
-  item.style.setProperty("--lane", String(Math.floor(Math.random() * 5 || lane || 0)));
+  const laneNumber = Number(lane);
+  const track = Number.isInteger(laneNumber) ? ((laneNumber % 5) + 5) % 5 : Math.floor(Math.random() * 5);
+  item.style.setProperty("--lane", String(track));
   item.style.setProperty("--duration", `${state.danmakuSpeed}s`);
   layer.appendChild(item);
   item.addEventListener("animationend", () => item.remove(), { once: true });
@@ -773,6 +775,7 @@ function shootDanmaku(layer, text, lane) {
 
 async function submitDanmaku(event) {
   event.preventDefault();
+  if (!requireLogin()) return;
   const form = event.currentTarget;
   const noteId = String(form.dataset.danmakuForm);
   const input = form.elements.danmaku;

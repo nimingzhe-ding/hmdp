@@ -18,8 +18,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 视频弹幕服务实现。
- * 前端不展示用户和创建时间，只按 videoSecond 在播放时触发。
+ * Video danmaku domain service.
+ * Reads are anonymous; writes require a logged-in user and a video note.
  */
 @Service
 public class VideoDanmakuServiceImpl extends ServiceImpl<VideoDanmakuMapper, VideoDanmaku> implements IVideoDanmakuService {
@@ -30,7 +30,10 @@ public class VideoDanmakuServiceImpl extends ServiceImpl<VideoDanmakuMapper, Vid
     @Override
     public Result listByBlog(Long blogId) {
         if (blogId == null) {
-            return Result.fail("视频ID不能为空");
+            return Result.fail("\u89c6\u9891ID\u4e0d\u80fd\u4e3a\u7a7a");
+        }
+        if (!canUseDanmaku(blogId)) {
+            return Result.ok(List.of());
         }
         List<Map<String, Object>> list = query()
                 .eq("blog_id", blogId)
@@ -46,25 +49,34 @@ public class VideoDanmakuServiceImpl extends ServiceImpl<VideoDanmakuMapper, Vid
 
     @Override
     public Result send(VideoDanmaku danmaku) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            return Result.fail("\u8bf7\u5148\u767b\u5f55\u540e\u518d\u53d1\u5f39\u5e55");
+        }
         if (danmaku == null || danmaku.getBlogId() == null) {
-            return Result.fail("视频ID不能为空");
+            return Result.fail("\u89c6\u9891ID\u4e0d\u80fd\u4e3a\u7a7a");
         }
         if (StrUtil.isBlank(danmaku.getContent())) {
-            return Result.fail("弹幕内容不能为空");
+            return Result.fail("\u5f39\u5e55\u5185\u5bb9\u4e0d\u80fd\u4e3a\u7a7a");
         }
-        Blog blog = blogService.getById(danmaku.getBlogId());
-        if (blog == null || StrUtil.isBlank(blog.getVideoUrl())) {
-            return Result.fail("视频不存在");
+        if (!canUseDanmaku(danmaku.getBlogId())) {
+            return Result.fail("\u53ea\u6709\u89c6\u9891\u548c\u76f4\u64ad\u5185\u5bb9\u53ef\u4ee5\u53d1\u9001\u5f39\u5e55");
         }
-        UserDTO user = UserHolder.getUser();
+
+        // Store userId for moderation/audit, but do not expose it in public responses.
         danmaku.setId(null);
-        danmaku.setUserId(user == null ? null : user.getId());
+        danmaku.setUserId(user.getId());
         danmaku.setContent(StrUtil.sub(danmaku.getContent().trim(), 0, 40));
         danmaku.setVideoSecond(Math.max(0, danmaku.getVideoSecond() == null ? 0 : danmaku.getVideoSecond()));
         danmaku.setLane(danmaku.getLane() == null ? null : Math.floorMod(danmaku.getLane(), 5));
         danmaku.setStatus(false);
         save(danmaku);
         return Result.ok(toView(danmaku));
+    }
+
+    private boolean canUseDanmaku(Long blogId) {
+        Blog blog = blogService.getById(blogId);
+        return blog != null && StrUtil.isNotBlank(blog.getVideoUrl());
     }
 
     private Map<String, Object> toView(VideoDanmaku danmaku) {
