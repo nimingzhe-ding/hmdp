@@ -44,9 +44,9 @@ INSERT INTO `tb_blog` VALUES (6, 10, 1, '杭州周末好去处｜💰50就可以
 INSERT INTO `tb_blog` VALUES (7, 10, 1, '杭州周末好去处｜💰50就可以骑马啦🐎', '/imgs/blogs/blog1.jpg', '杭州周末好去处｜💰50就可以骑马啦🐎', 1, 0, '2022-01-11 16:05:47', '2022-03-10 09:21:42');
 
 ALTER TABLE `tb_blog`
-  ADD COLUMN IF NOT EXISTS `video_url` varchar(1024) NULL COMMENT '视频笔记地址' AFTER `images`,
-  ADD COLUMN IF NOT EXISTS `content_type` varchar(32) NOT NULL DEFAULT 'IMAGE' COMMENT '内容类型：IMAGE/VIDEO/LIVE/PRODUCT_NOTE' AFTER `video_url`,
-  ADD INDEX IF NOT EXISTS `idx_blog_content_type` (`content_type`, `create_time`);
+  ADD COLUMN `video_url` varchar(1024) NULL COMMENT '视频笔记地址' AFTER `images`,
+  ADD COLUMN `content_type` varchar(32) NOT NULL DEFAULT 'IMAGE' COMMENT '内容类型：IMAGE/VIDEO/LIVE/PRODUCT_NOTE' AFTER `video_url`,
+  ADD INDEX `idx_blog_content_type` (`content_type`, `create_time`);
 
 CREATE TABLE IF NOT EXISTS `tb_blog_product` (
   `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',

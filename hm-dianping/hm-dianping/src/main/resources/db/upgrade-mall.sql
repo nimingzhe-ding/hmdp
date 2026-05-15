@@ -3,6 +3,51 @@
 
 USE hmdp;
 
+DROP PROCEDURE IF EXISTS add_column_if_missing;
+DROP PROCEDURE IF EXISTS add_index_if_missing;
+
+DELIMITER //
+CREATE PROCEDURE add_column_if_missing(
+  IN table_name_value varchar(64),
+  IN column_name_value varchar(64),
+  IN column_definition_value text
+)
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = table_name_value
+      AND column_name = column_name_value
+  ) THEN
+    SET @ddl = CONCAT('ALTER TABLE `', table_name_value, '` ADD COLUMN ', column_definition_value);
+    PREPARE stmt FROM @ddl;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+  END IF;
+END//
+
+CREATE PROCEDURE add_index_if_missing(
+  IN table_name_value varchar(64),
+  IN index_name_value varchar(64),
+  IN index_definition_value text
+)
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = table_name_value
+      AND index_name = index_name_value
+  ) THEN
+    SET @ddl = CONCAT('ALTER TABLE `', table_name_value, '` ', index_definition_value);
+    PREPARE stmt FROM @ddl;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+  END IF;
+END//
+DELIMITER ;
+
 CREATE TABLE IF NOT EXISTS `tb_merchant` (
   `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   `user_id` bigint UNSIGNED NOT NULL COMMENT '商家所属用户id',
@@ -80,25 +125,21 @@ CREATE TABLE IF NOT EXISTS `tb_mall_order` (
   KEY `idx_user_time` (`user_id`, `create_time`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商城订单表';
 
-ALTER TABLE `tb_mall_product`
-  ADD COLUMN IF NOT EXISTS `merchant_id` bigint UNSIGNED NULL COMMENT '商家id' AFTER `id`,
-  ADD INDEX IF NOT EXISTS `idx_merchant_status` (`merchant_id`, `status`);
+CALL add_column_if_missing('tb_mall_product', 'merchant_id', '`merchant_id` bigint UNSIGNED NULL COMMENT ''商家id'' AFTER `id`');
+CALL add_index_if_missing('tb_mall_product', 'idx_merchant_status', 'ADD INDEX `idx_merchant_status` (`merchant_id`, `status`)');
 
-ALTER TABLE `tb_mall_order`
-  ADD COLUMN IF NOT EXISTS `merchant_id` bigint UNSIGNED NULL COMMENT '商家id' AFTER `user_id`,
-  ADD COLUMN IF NOT EXISTS `voucher_id` bigint UNSIGNED NULL COMMENT '优惠券id' AFTER `product_id`,
-  ADD COLUMN IF NOT EXISTS `discount_amount` bigint NOT NULL DEFAULT 0 COMMENT '优惠金额，单位分' AFTER `price`,
-  ADD INDEX IF NOT EXISTS `idx_merchant_time` (`merchant_id`, `create_time`);
+CALL add_column_if_missing('tb_mall_order', 'merchant_id', '`merchant_id` bigint UNSIGNED NULL COMMENT ''商家id'' AFTER `user_id`');
+CALL add_column_if_missing('tb_mall_order', 'voucher_id', '`voucher_id` bigint UNSIGNED NULL COMMENT ''优惠券id'' AFTER `product_id`');
+CALL add_column_if_missing('tb_mall_order', 'discount_amount', '`discount_amount` bigint NOT NULL DEFAULT 0 COMMENT ''优惠金额，单位分'' AFTER `price`');
+CALL add_index_if_missing('tb_mall_order', 'idx_merchant_time', 'ADD INDEX `idx_merchant_time` (`merchant_id`, `create_time`)');
 
-ALTER TABLE `tb_voucher`
-  ADD COLUMN IF NOT EXISTS `merchant_id` bigint UNSIGNED NULL COMMENT '商城商家id' AFTER `shop_id`,
-  ADD COLUMN IF NOT EXISTS `product_id` bigint UNSIGNED NULL COMMENT '商城商品id' AFTER `merchant_id`,
-  ADD INDEX IF NOT EXISTS `idx_mall_voucher` (`merchant_id`, `product_id`, `status`);
+CALL add_column_if_missing('tb_voucher', 'merchant_id', '`merchant_id` bigint UNSIGNED NULL COMMENT ''商城商家id'' AFTER `shop_id`');
+CALL add_column_if_missing('tb_voucher', 'product_id', '`product_id` bigint UNSIGNED NULL COMMENT ''商城商品id'' AFTER `merchant_id`');
+CALL add_index_if_missing('tb_voucher', 'idx_mall_voucher', 'ADD INDEX `idx_mall_voucher` (`merchant_id`, `product_id`, `status`)');
 
-ALTER TABLE `tb_blog`
-  ADD COLUMN IF NOT EXISTS `video_url` varchar(1024) NULL COMMENT '视频笔记地址' AFTER `images`,
-  ADD COLUMN IF NOT EXISTS `content_type` varchar(32) NOT NULL DEFAULT 'IMAGE' COMMENT '内容类型：IMAGE/VIDEO/LIVE/PRODUCT_NOTE' AFTER `video_url`,
-  ADD INDEX IF NOT EXISTS `idx_blog_content_type` (`content_type`, `create_time`);
+CALL add_column_if_missing('tb_blog', 'video_url', '`video_url` varchar(1024) NULL COMMENT ''视频笔记地址'' AFTER `images`');
+CALL add_column_if_missing('tb_blog', 'content_type', '`content_type` varchar(32) NOT NULL DEFAULT ''IMAGE'' COMMENT ''内容类型：IMAGE/VIDEO/LIVE/PRODUCT_NOTE'' AFTER `video_url`');
+CALL add_index_if_missing('tb_blog', 'idx_blog_content_type', 'ADD INDEX `idx_blog_content_type` (`content_type`, `create_time`)');
 
 UPDATE `tb_blog`
 SET `content_type` = 'VIDEO'
@@ -151,3 +192,6 @@ INSERT INTO `tb_voucher`
 (`shop_id`, `merchant_id`, `product_id`, `title`, `sub_title`, `rules`, `pay_value`, `actual_value`, `type`, `status`)
 SELECT NULL, 1, NULL, '商城新人满50减10', '探店商城全店可用', '商城订单满50元可用，不与其他券叠加', 5000, 1000, 0, 1
 WHERE NOT EXISTS (SELECT 1 FROM `tb_voucher` WHERE `title` = '商城新人满50减10');
+
+DROP PROCEDURE IF EXISTS add_column_if_missing;
+DROP PROCEDURE IF EXISTS add_index_if_missing;
