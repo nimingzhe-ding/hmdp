@@ -51,7 +51,6 @@ const els = {
   search: document.querySelector("#searchInput"),
   suggestPopover: document.querySelector("#suggestPopover"),
   categoryList: document.querySelector("#categoryList"),
-  mobileCategoryList: document.querySelector("#mobileCategoryList"),
   unifiedSearch: document.querySelector("#unifiedSearch"),
   unifiedSearchTitle: document.querySelector("#unifiedSearchTitle"),
   unifiedSearchSummary: document.querySelector("#unifiedSearchSummary"),
@@ -93,8 +92,6 @@ const els = {
   videoPreview: document.querySelector("#videoPreview"),
   loginDialog: document.querySelector("#loginDialog"),
   loginForm: document.querySelector("#loginForm"),
-  smartCard: document.querySelector("#smartCard"),
-  smartText: document.querySelector("#smartText"),
   noteSmart: document.querySelector("#noteSmart"),
   noteSmartText: document.querySelector("#noteSmartText"),
   shopBridge: document.querySelector("#shopBridge"),
@@ -102,10 +99,6 @@ const els = {
   commentInput: document.querySelector("#commentInput"),
   commentList: document.querySelector("#commentList"),
   commentCount: document.querySelector("#commentCount"),
-  profileAvatar: document.querySelector("#profileAvatar"),
-  profileName: document.querySelector("#profileName"),
-  profileHint: document.querySelector("#profileHint"),
-  trendList: document.querySelector("#trendList"),
   toastContainer: document.querySelector("#toastContainer")
 };
 
@@ -369,18 +362,10 @@ async function initUser() {
 
 function renderUser(user) {
   if (!user) {
-    els.profileAvatar.src = fallbackAvatar;
-    els.profileName.textContent = "未登录";
-    els.profileHint.textContent = "登录后发布、点赞、评论";
     document.querySelector("#loginButton").textContent = "登录";
-    document.querySelector("#profileLogin").textContent = "手机号登录";
     return;
   }
-  els.profileAvatar.src = normalizeImage(user.icon) || fallbackAvatar;
-  els.profileName.textContent = user.nickName || "探店用户";
-  els.profileHint.textContent = `ID ${user.id}`;
   document.querySelector("#loginButton").textContent = "已登录";
-  document.querySelector("#profileLogin").textContent = "退出登录";
 }
 
 async function loadProfileStats() {
@@ -388,11 +373,6 @@ async function loadProfileStats() {
   try {
     const profile = await request("/content/profile");
     state.currentProfile = profile;
-    document.querySelector("#statNotes").textContent = profile.notes || 0;
-    document.querySelector("#statLikes").textContent = profile.likes || 0;
-    document.querySelector("#statCollects").textContent = profile.collects || 0;
-    if (profile.nickName) els.profileName.textContent = profile.nickName;
-    if (profile.icon) els.profileAvatar.src = normalizeImage(profile.icon);
   } catch {
     // 统计接口异常时保留当前用户基础信息，不影响浏览主流程。
   }
@@ -406,7 +386,6 @@ async function openMyProfile(tab = "works") {
   state.profileTab = tab;
   els.feed.hidden = true;
   els.loading.hidden = true;
-  els.smartCard.hidden = true;
   els.profileHome.hidden = false;
   els.profileHomeResults.innerHTML = `<p class="empty-text">正在加载主页...</p>`;
   document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
@@ -510,6 +489,7 @@ function openProfileEdit() {
 }
 
 async function submitProfileEdit(event) {
+  if (event.submitter && event.submitter.value === "cancel") return;
   event.preventDefault();
   const form = new FormData(els.profileEditForm);
   try {
@@ -546,25 +526,22 @@ async function loadCategories() {
 }
 
 function renderCategories(categories) {
-  [els.categoryList, els.mobileCategoryList].forEach(container => {
-    container.innerHTML = "";
-    categories.forEach(category => {
-      const button = document.createElement("button");
-      button.className = `category-pill${category.id === state.category ? " is-active" : ""}`;
-      button.type = "button";
-      button.textContent = category.name;
-      button.addEventListener("click", () => {
-        state.category = category.id;
-        document.querySelectorAll(".category-pill").forEach(item => {
-          item.classList.toggle("is-active", item.textContent === category.name);
-        });
-        state.query = category.id === "all" ? "" : category.name;
-        els.search.value = state.query;
-        resetAndLoad();
-        if (state.query) loadSmartRecommendation(state.query);
+  els.categoryList.innerHTML = "";
+  categories.forEach(category => {
+    const button = document.createElement("button");
+    button.className = `category-pill${category.id === state.category ? " is-active" : ""}`;
+    button.type = "button";
+    button.textContent = category.name;
+    button.addEventListener("click", () => {
+      state.category = category.id;
+      document.querySelectorAll(".category-pill").forEach(item => {
+        item.classList.toggle("is-active", item.textContent === category.name);
       });
-      container.appendChild(button);
+      state.query = category.id === "all" ? "" : category.name;
+      els.search.value = state.query;
+      resetAndLoad();
     });
+    els.categoryList.appendChild(button);
   });
 }
 
@@ -1341,14 +1318,14 @@ function normalizeShop(shop, index = 0) {
 }
 
 function setMallActive(active) {
-  document.querySelectorAll("#mallTab, #railMall, #mobileMall").forEach(item => item.classList.toggle("is-active", active));
+  document.querySelectorAll("#mallTab, #mobileMall").forEach(item => item.classList.toggle("is-active", active));
   if (active) {
     document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
   }
 }
 
 function setVideoActive(active) {
-  document.querySelectorAll("#videoTab, #railVideo, #mobileVideo").forEach(item => item.classList.toggle("is-active", active));
+  document.querySelectorAll("#videoTab, #mobileVideo").forEach(item => item.classList.toggle("is-active", active));
   if (active) {
     document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
   }
@@ -1951,24 +1928,7 @@ async function shipMerchantOrder(orderId) {
 }
 
 async function loadSmartRecommendation(question) {
-  if (!question) {
-    els.smartCard.hidden = true;
-    return;
-  }
-  els.smartCard.hidden = false;
-  els.smartText.textContent = "正在结合店铺、优惠券和笔记内容生成推荐...";
-  try {
-    const data = await request("/content/ai/recommend", {
-      method: "POST",
-      body: JSON.stringify({
-        sessionId: state.aiSessionId,
-        query: question
-      })
-    });
-    els.smartText.textContent = data.answer || data.content || "暂时没有生成有效推荐。";
-  } catch {
-    els.smartText.textContent = `先看看「${question}」相关笔记。智能推荐暂时不可用，但不影响正常浏览。`;
-  }
+  // smart-card removed from UI; keep function for potential future use
 }
 
 async function analyzeCurrentNote(note) {
@@ -2176,7 +2136,6 @@ async function enterUnifiedSearch(query, preferredTab = "notes", loadAi = true) 
   state.searchTab = preferredTab;
   els.search.value = keyword;
   els.suggestPopover.classList.remove("is-open");
-  els.smartCard.hidden = true;
   els.feed.hidden = true;
   els.loading.hidden = true;
   els.unifiedSearch.hidden = false;
@@ -2399,6 +2358,7 @@ async function sendCode() {
 }
 
 async function submitLogin(event) {
+  if (event.submitter && event.submitter.value === "cancel") return;
   event.preventDefault();
   const payload = {
     phone: els.loginForm.elements.phone.value.trim(),
@@ -2543,10 +2503,6 @@ document.querySelectorAll("[data-smart-query]").forEach(button => {
   });
 });
 
-document.querySelector("#refreshSmart").addEventListener("click", () => {
-  loadSmartRecommendation(state.query || "推荐几个适合今天去的店");
-});
-
 document.querySelectorAll("[data-close-drawer]").forEach(item => item.addEventListener("click", closeDrawer));
 function openComposer() {
   if (!requireLogin()) return;
@@ -2555,14 +2511,11 @@ function openComposer() {
 }
 
 document.querySelector("#openComposer").addEventListener("click", openComposer);
-document.querySelector("#railPublish").addEventListener("click", openComposer);
 document.querySelector("#mobilePublish").addEventListener("click", openComposer);
 document.querySelector("#closeShopDialog").addEventListener("click", () => els.shopDialog.close());
 document.querySelector("#mallTab").addEventListener("click", switchMall);
-document.querySelector("#railMall").addEventListener("click", switchMall);
 document.querySelector("#mobileMall").addEventListener("click", switchMall);
 document.querySelector("#videoTab").addEventListener("click", switchVideo);
-document.querySelector("#railVideo").addEventListener("click", switchVideo);
 document.querySelector("#mobileVideo").addEventListener("click", switchVideo);
 document.querySelector("#openCart").addEventListener("click", openCartDialog);
 document.querySelector("#openOrders").addEventListener("click", openOrdersDialog);
@@ -2582,28 +2535,11 @@ document.querySelectorAll("[data-mall-category]").forEach(button => {
   });
 });
 document.querySelector("#loginButton").addEventListener("click", () => els.loginDialog.showModal());
-document.querySelector("#profileLogin").addEventListener("click", () => {
-  if (token()) {
-    localStorage.removeItem("hmdp_token");
-    state.currentUser = null;
-    state.mode = "feed";
-    renderUser(null);
-    resetAndLoad();
-  } else {
-    els.loginDialog.showModal();
-  }
-});
-document.querySelector("#showMyNotes").addEventListener("click", () => openMyProfile("works"));
-document.querySelector("#showMyCollections").addEventListener("click", () => openMyProfile("collections"));
-document.querySelector("#showMyLiked").addEventListener("click", () => openMyProfile("liked"));
 document.querySelector("#editProfileButton").addEventListener("click", openProfileEdit);
 els.profileEditForm.addEventListener("submit", submitProfileEdit);
 document.querySelectorAll(".profile-home-stats [data-profile-tab]").forEach(button => {
   button.addEventListener("click", () => loadProfileTab(button.dataset.profileTab));
 });
-document.querySelector("#showDiscover").addEventListener("click", () => switchFeed("hot"));
-document.querySelector("#showWallet").addEventListener("click", showWallet);
-document.querySelector("#refreshTrends").addEventListener("click", loadTrends);
 document.querySelector("#sendCodeButton").addEventListener("click", sendCode);
 els.composerForm.addEventListener("submit", submitComposer);
 els.loginForm.addEventListener("submit", submitLogin);
@@ -2628,5 +2564,4 @@ window.addEventListener("scroll", () => {
 
 initUser();
 loadCategories();
-loadTrends();
 loadNotes();
