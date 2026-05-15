@@ -978,6 +978,172 @@ img {
   gap: 8px;
 }
 
+.unified-search {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.unified-search-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-end;
+}
+
+.unified-search-head strong,
+.unified-search-head span {
+  display: block;
+}
+
+.unified-search-head strong {
+  font-size: 20px;
+}
+
+.unified-search-head span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.unified-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.unified-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.unified-tabs button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: #444;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.unified-tabs button.is-active {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
+.unified-tabs small {
+  color: inherit;
+  opacity: .72;
+}
+
+.unified-results {
+  min-height: 120px;
+}
+
+.unified-note-results {
+  column-width: 220px;
+}
+
+.unified-product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.unified-list {
+  display: grid;
+  gap: 12px;
+}
+
+.unified-row button {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  padding: 10px;
+  text-align: left;
+}
+
+.unified-row img {
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f3f3f4;
+}
+
+.unified-row span,
+.unified-row strong,
+.unified-row small,
+.unified-row em {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unified-row strong {
+  font-size: 15px;
+}
+
+.unified-row small {
+  margin-top: 5px;
+  color: #555;
+  font-style: normal;
+}
+
+.unified-row em {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.unified-topic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.unified-topic-grid button {
+  min-height: 74px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  padding: 12px;
+  text-align: left;
+}
+
+.unified-topic-grid strong,
+.unified-topic-grid span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unified-topic-grid span {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* Masonry note feed */
 .masonry-feed {
   column-width: 236px;

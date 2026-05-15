@@ -12,6 +12,8 @@ const state = {
   category: "all",
   mallCategory: "all",
   mallQuery: "",
+  searchTab: "notes",
+  searchResults: { notes: [], videos: [], products: [], shops: [], topics: [] },
   mallProducts: [],
   videoNotes: [],
   videoObserver: null,
@@ -48,6 +50,11 @@ const els = {
   suggestPopover: document.querySelector("#suggestPopover"),
   categoryList: document.querySelector("#categoryList"),
   mobileCategoryList: document.querySelector("#mobileCategoryList"),
+  unifiedSearch: document.querySelector("#unifiedSearch"),
+  unifiedSearchTitle: document.querySelector("#unifiedSearchTitle"),
+  unifiedSearchSummary: document.querySelector("#unifiedSearchSummary"),
+  unifiedSearchTabs: document.querySelector("#unifiedSearchTabs"),
+  unifiedSearchResults: document.querySelector("#unifiedSearchResults"),
   contentArea: document.querySelector(".content-area"),
   mallArea: document.querySelector("#mallArea"),
   videoArea: document.querySelector("#videoArea"),
@@ -1089,12 +1096,20 @@ async function submitComment(event) {
 // Feed reset and AI recommendation
 // ------------------------------
 function resetAndLoad(clearStatus = true) {
+  hideUnifiedSearch();
   state.page = 1;
   state.hasMore = true;
   state.notes = [];
   els.feed.innerHTML = "";
   if (clearStatus) hideStatus();
   loadNotes();
+}
+
+function hideUnifiedSearch() {
+  if (!els.unifiedSearch) return;
+  els.unifiedSearch.hidden = true;
+  els.feed.hidden = false;
+  els.loading.hidden = false;
 }
 
 // ------------------------------
@@ -1112,6 +1127,20 @@ function normalizeProduct(product, index = 0) {
     stock: Number(product.stock || 0),
     sold: Number(product.sold || 0),
     category: product.category || "all"
+  };
+}
+
+function normalizeShop(shop, index = 0) {
+  const images = String(shop.images || "").split(",").map(item => item.trim()).filter(Boolean);
+  return {
+    ...shop,
+    image: normalizeImage(images[0]) || fallbackNotes[index % fallbackNotes.length].images,
+    name: shop.name || "本地商家",
+    area: shop.area || "本地生活",
+    address: shop.address || "",
+    avgPrice: Number(shop.avgPrice || 0),
+    sold: Number(shop.sold || 0),
+    score: Number(shop.score || 0)
   };
 }
 
@@ -1933,6 +1962,215 @@ function mergeTopics(content, topics) {
 }
 
 // ------------------------------
+// 统一搜索：笔记、视频、商品、商家和话题
+// ------------------------------
+async function enterUnifiedSearch(query, preferredTab = "notes", loadAi = true) {
+  const keyword = String(query || "").trim();
+  if (!keyword) {
+    state.mode = "feed";
+    resetAndLoad();
+    return;
+  }
+  showContentArea();
+  state.mode = "search";
+  document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
+  state.query = keyword;
+  state.mallQuery = keyword;
+  state.searchTab = preferredTab;
+  els.search.value = keyword;
+  els.suggestPopover.classList.remove("is-open");
+  els.smartCard.hidden = true;
+  els.feed.hidden = true;
+  els.loading.hidden = true;
+  els.unifiedSearch.hidden = false;
+  els.unifiedSearchTitle.textContent = `搜索「${keyword}」`;
+  els.unifiedSearchSummary.textContent = "正在同时搜索笔记、视频、商品、商家和话题";
+  els.unifiedSearchTabs.innerHTML = "";
+  els.unifiedSearchResults.innerHTML = `<p class="empty-text">正在搜索...</p>`;
+  trackEvent("search", { scene: "unified", keyword });
+
+  const [notes, products, shops] = await Promise.all([
+    searchNotes(keyword),
+    searchProducts(keyword),
+    searchShops(keyword)
+  ]);
+  if (state.mode !== "search" || els.search.value.trim() !== keyword) {
+    return;
+  }
+  state.searchResults = {
+    notes,
+    videos: notes.filter(note => note.isVideo),
+    products,
+    shops,
+    topics: searchTopics(keyword)
+  };
+  if (!state.searchResults[state.searchTab]?.length) {
+    state.searchTab = ["notes", "videos", "products", "shops", "topics"].find(tab => state.searchResults[tab].length) || "notes";
+  }
+  renderUnifiedSearch();
+  if (loadAi) loadSmartRecommendation(keyword);
+}
+
+async function searchNotes(keyword) {
+  try {
+    const params = new URLSearchParams({ current: "1", channel: "hot", query: keyword });
+    const data = await request(`/content/feed?${params.toString()}`);
+    const notes = Array.isArray(data?.list) ? data.list.map(normalizeNote) : [];
+    return notes;
+  } catch {
+    const lower = keyword.toLowerCase();
+    return fallbackNotes
+      .map(normalizeNote)
+      .filter(note => `${note.title} ${note.content}`.toLowerCase().includes(lower));
+  }
+}
+
+async function searchProducts(keyword) {
+  try {
+    const params = new URLSearchParams({ current: "1", category: "all", query: keyword });
+    const data = await request(`/mall/products?${params.toString()}`);
+    return Array.isArray(data) ? data.map(normalizeProduct) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function searchShops(keyword) {
+  try {
+    const params = new URLSearchParams({ current: "1", name: keyword });
+    const data = await request(`/shop/of/name?${params.toString()}`);
+    return Array.isArray(data) ? data.map(normalizeShop) : [];
+  } catch {
+    return [];
+  }
+}
+
+function searchTopics(keyword) {
+  const source = [...new Set([
+    ...fallbackSuggestions,
+    ...state.trends.map(item => item.keyword).filter(Boolean),
+    keyword
+  ])];
+  return source
+    .filter(topic => topic && (!keyword || topic.includes(keyword) || keyword.includes(topic)))
+    .slice(0, 12)
+    .map(topic => ({ keyword: topic, heat: state.trends.find(item => item.keyword === topic)?.heat || "" }));
+}
+
+function renderUnifiedSearch() {
+  const tabs = [
+    { key: "notes", label: "笔记" },
+    { key: "videos", label: "视频" },
+    { key: "products", label: "商品" },
+    { key: "shops", label: "商家" },
+    { key: "topics", label: "话题" }
+  ];
+  const total = tabs.reduce((sum, tab) => sum + state.searchResults[tab.key].length, 0);
+  els.unifiedSearchSummary.textContent = `共找到 ${total} 条结果`;
+  els.unifiedSearchTabs.innerHTML = tabs.map(tab => `
+    <button type="button" class="${state.searchTab === tab.key ? "is-active" : ""}" data-search-tab="${tab.key}">
+      ${tab.label}<small>${state.searchResults[tab.key].length}</small>
+    </button>
+  `).join("");
+  els.unifiedSearchTabs.querySelectorAll("[data-search-tab]").forEach(button => {
+    button.addEventListener("click", () => {
+      state.searchTab = button.dataset.searchTab;
+      renderUnifiedSearch();
+    });
+  });
+  renderUnifiedSearchResults();
+}
+
+function renderUnifiedSearchResults() {
+  const list = state.searchResults[state.searchTab] || [];
+  if (!list.length) {
+    els.unifiedSearchResults.innerHTML = `<p class="empty-text">这个分类暂时没有匹配结果。</p>`;
+    return;
+  }
+  if (state.searchTab === "notes" || state.searchTab === "videos") {
+    const grid = document.createElement("div");
+    grid.className = "masonry-feed unified-note-results";
+    list.forEach(note => grid.appendChild(createNoteCard(note)));
+    els.unifiedSearchResults.innerHTML = "";
+    els.unifiedSearchResults.appendChild(grid);
+    return;
+  }
+  if (state.searchTab === "products") {
+    renderUnifiedProducts(list);
+    return;
+  }
+  if (state.searchTab === "shops") {
+    renderUnifiedShops(list);
+    return;
+  }
+  renderUnifiedTopics(list);
+}
+
+function renderUnifiedProducts(products) {
+  els.unifiedSearchResults.innerHTML = `
+    <div class="unified-product-grid">
+      ${products.map(product => `
+        <article class="product-card">
+          <button type="button" data-unified-product="${product.id}">
+            <div class="product-image-wrap">
+              <img class="product-image" src="${normalizeImage(product.image)}" alt="${escapeHtml(product.title)}" loading="lazy">
+              <span>已售 ${product.sold}</span>
+            </div>
+            <div class="product-body">
+              <h2>${escapeHtml(product.title)}</h2>
+              <p>${escapeHtml(product.subTitle)}</p>
+              <div class="product-row">
+                <strong>¥${formatMoney(product.price)}</strong>
+                ${product.originPrice ? `<small>¥${formatMoney(product.originPrice)}</small>` : ""}
+              </div>
+            </div>
+          </button>
+        </article>
+      `).join("")}
+    </div>`;
+  els.unifiedSearchResults.querySelectorAll("[data-unified-product]").forEach(button => {
+    button.addEventListener("click", () => openProduct(button.dataset.unifiedProduct));
+  });
+}
+
+function renderUnifiedShops(shops) {
+  els.unifiedSearchResults.innerHTML = `
+    <div class="unified-list">
+      ${shops.map(shop => `
+        <article class="unified-row">
+          <button type="button" data-unified-shop="${shop.id}">
+            <img src="${normalizeImage(shop.image)}" alt="${escapeHtml(shop.name)}">
+            <span>
+              <strong>${escapeHtml(shop.name)}</strong>
+              <small>${escapeHtml(shop.area)} · ${shop.avgPrice ? `人均 ¥${shop.avgPrice}` : "价格待补充"} · ${shop.score ? `${(shop.score / 10).toFixed(1)}分` : "暂无评分"}</small>
+              <em>${escapeHtml(shop.address || "地址待补充")}</em>
+            </span>
+          </button>
+        </article>
+      `).join("")}
+    </div>`;
+  els.unifiedSearchResults.querySelectorAll("[data-unified-shop]").forEach(button => {
+    const shop = shops.find(item => String(item.id) === String(button.dataset.unifiedShop));
+    button.addEventListener("click", () => openShopDialog(shop));
+  });
+}
+
+function renderUnifiedTopics(topics) {
+  els.unifiedSearchResults.innerHTML = `
+    <div class="unified-topic-grid">
+      ${topics.map(topic => `
+        <button type="button" data-unified-topic="${escapeHtml(topic.keyword)}">
+          <strong>#${escapeHtml(topic.keyword)}</strong>
+          <span>${topic.heat ? `热度 ${topic.heat}` : "继续探索这个话题"}</span>
+        </button>
+      `).join("")}
+    </div>`;
+  els.unifiedSearchResults.querySelectorAll("[data-unified-topic]").forEach(button => {
+    button.addEventListener("click", () => enterUnifiedSearch(button.dataset.unifiedTopic, "notes"));
+  });
+}
+
+// ------------------------------
 // Login workflow
 // ------------------------------
 async function sendCode() {
@@ -1980,8 +2218,7 @@ function renderSuggestions(value = "") {
       state.query = button.dataset.suggestion;
       els.search.value = state.query;
       els.suggestPopover.classList.remove("is-open");
-      resetAndLoad();
-      loadSmartRecommendation(state.query);
+      enterUnifiedSearch(state.query);
     });
   });
 }
@@ -2009,12 +2246,10 @@ function renderTrends() {
   `).join("");
   els.trendList.querySelectorAll("button").forEach(button => {
     button.addEventListener("click", () => {
-      state.mode = "feed";
       state.query = button.dataset.trend;
       els.search.value = state.query;
       trackEvent("search", { scene: "trend", keyword: state.query });
-      resetAndLoad();
-      loadSmartRecommendation(state.query);
+      enterUnifiedSearch(state.query);
     });
   });
 }
@@ -2041,20 +2276,7 @@ function escapeHtml(value) {
 // ------------------------------
 els.searchForm.addEventListener("submit", event => {
   event.preventDefault();
-  if (state.mode === "mall") {
-    state.mallQuery = els.search.value.trim();
-    els.suggestPopover.classList.remove("is-open");
-    trackEvent("search", { scene: "mall", keyword: state.mallQuery });
-    loadProducts();
-    return;
-  }
-  showContentArea();
-  state.mode = "feed";
-  state.query = els.search.value.trim();
-  els.suggestPopover.classList.remove("is-open");
-  trackEvent("search", { scene: "search", keyword: state.query });
-  resetAndLoad();
-  loadSmartRecommendation(state.query);
+  enterUnifiedSearch(els.search.value);
 });
 
 let searchTimer;
@@ -2063,14 +2285,13 @@ els.search.addEventListener("input", () => {
   renderSuggestions(els.search.value);
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
-    if (state.mode === "mall") {
-      state.mallQuery = els.search.value.trim();
-      loadProducts();
-      return;
+    const keyword = els.search.value.trim();
+    if (keyword) enterUnifiedSearch(keyword, state.searchTab || "notes", false);
+    else {
+      state.mode = "feed";
+      state.query = "";
+      resetAndLoad();
     }
-    state.mode = "feed";
-    state.query = els.search.value.trim();
-    resetAndLoad();
   }, 280);
 });
 
@@ -2102,12 +2323,9 @@ document.querySelectorAll("[data-feed]").forEach(button => {
 
 document.querySelectorAll("[data-smart-query]").forEach(button => {
   button.addEventListener("click", () => {
-    showContentArea();
-    state.mode = "feed";
     state.query = button.dataset.smartQuery;
     els.search.value = state.query;
-    resetAndLoad();
-    loadSmartRecommendation(state.query);
+    enterUnifiedSearch(state.query);
   });
 });
 
@@ -2183,7 +2401,7 @@ window.addEventListener("keydown", event => {
 });
 
 window.addEventListener("scroll", () => {
-  if (state.mode === "mall" || state.mode === "video") return;
+  if (state.mode === "mall" || state.mode === "video" || state.mode === "search") return;
   const nearBottom = window.innerHeight + window.scrollY > document.body.offsetHeight - 620;
   if (nearBottom) loadNotes();
 }, { passive: true });
