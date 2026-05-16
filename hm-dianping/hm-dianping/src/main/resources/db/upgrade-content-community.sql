@@ -119,3 +119,241 @@ VALUES
   ('好物', 72, 0),
   ('探店', 110, 0)
 ON DUPLICATE KEY UPDATE `heat` = GREATEST(`heat`, VALUES(`heat`));
+
+CREATE TABLE IF NOT EXISTS `tb_video_play_metric` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `blog_id` bigint UNSIGNED NOT NULL COMMENT '视频笔记id',
+  `user_id` bigint UNSIGNED NULL COMMENT '观看用户id',
+  `duration_second` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '视频总时长秒',
+  `watched_second` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '本次已看秒数',
+  `max_progress` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '最大播放进度百分比',
+  `completed` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否完播',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_blog_time` (`blog_id`, `create_time`) USING BTREE,
+  KEY `idx_user_blog` (`user_id`, `blog_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='视频播放指标表';
+
+CREATE TABLE IF NOT EXISTS `tb_live_room` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `merchant_id` bigint UNSIGNED NOT NULL COMMENT '商家id',
+  `anchor_user_id` bigint UNSIGNED NOT NULL COMMENT '主播用户id',
+  `blog_id` bigint UNSIGNED NULL COMMENT '关联内容id，回放会沉淀为视频内容',
+  `title` varchar(80) NOT NULL COMMENT '直播标题',
+  `cover_url` varchar(512) NULL COMMENT '直播封面',
+  `stream_url` varchar(512) NULL COMMENT '直播流地址',
+  `replay_video_url` varchar(512) NULL COMMENT '直播回放视频地址',
+  `status` tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT '状态：0预告，1直播中，2已结束',
+  `online_count` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '在线人数',
+  `liked` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '直播点赞数',
+  `start_time` timestamp NULL DEFAULT NULL COMMENT '开播时间',
+  `end_time` timestamp NULL DEFAULT NULL COMMENT '关播时间',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_status_time` (`status`, `start_time`, `create_time`) USING BTREE,
+  KEY `idx_merchant_time` (`merchant_id`, `create_time`) USING BTREE,
+  KEY `idx_anchor_time` (`anchor_user_id`, `create_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='直播间表';
+
+CREATE TABLE IF NOT EXISTS `tb_live_room_product` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `room_id` bigint UNSIGNED NOT NULL COMMENT '直播间id',
+  `product_id` bigint UNSIGNED NOT NULL COMMENT '商品id',
+  `sort` int NOT NULL DEFAULT 0 COMMENT '排序',
+  `explain_text` varchar(255) NULL COMMENT '商品讲解文案',
+  `explaining` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否正在讲解',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_room_product` (`room_id`, `product_id`) USING BTREE,
+  KEY `idx_product_id` (`product_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='直播间商品橱窗表';
+
+CREATE TABLE IF NOT EXISTS `tb_live_room_message` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `room_id` bigint UNSIGNED NOT NULL COMMENT '直播间id',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '发送用户id',
+  `type` varchar(32) NOT NULL DEFAULT 'danmaku' COMMENT '消息类型：danmaku/like/system',
+  `content` varchar(120) NOT NULL COMMENT '消息内容',
+  `liked` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '消息点赞数',
+  `status` tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT '状态：0正常，1举报，2删除',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_room_time` (`room_id`, `create_time`) USING BTREE,
+  KEY `idx_user_time` (`user_id`, `create_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='直播互动消息表';
+
+CALL add_column_if_missing('tb_mall_product', 'category_id', 'bigint UNSIGNED NULL COMMENT ''一级类目id'' AFTER `category`');
+CALL add_column_if_missing('tb_mall_product', 'sub_category_id', 'bigint UNSIGNED NULL COMMENT ''二级类目id'' AFTER `category_id`');
+CALL add_column_if_missing('tb_mall_product', 'spec_summary', 'varchar(255) NULL COMMENT ''规格摘要'' AFTER `sub_category_id`');
+CALL add_column_if_missing('tb_mall_product', 'score', 'int UNSIGNED NOT NULL DEFAULT 0 COMMENT ''商品评分，乘以10保存'' AFTER `spec_summary`');
+CALL add_column_if_missing('tb_mall_product', 'review_count', 'int UNSIGNED NOT NULL DEFAULT 0 COMMENT ''评价数'' AFTER `score`');
+CALL add_column_if_missing('tb_mall_product', 'favorite_count', 'int UNSIGNED NOT NULL DEFAULT 0 COMMENT ''收藏数'' AFTER `review_count`');
+
+CALL add_column_if_missing('tb_mall_order', 'sku_id', 'bigint UNSIGNED NULL COMMENT ''SKU id'' AFTER `product_id`');
+CALL add_column_if_missing('tb_mall_order', 'address_id', 'bigint UNSIGNED NULL COMMENT ''收货地址id'' AFTER `sku_id`');
+CALL add_column_if_missing('tb_mall_order', 'sku_name', 'varchar(120) NULL COMMENT ''SKU名称快照'' AFTER `product_image`');
+CALL add_column_if_missing('tb_mall_order', 'sku_specs', 'varchar(512) NULL COMMENT ''SKU规格快照'' AFTER `sku_name`');
+CALL add_column_if_missing('tb_mall_order', 'receiver_name', 'varchar(64) NULL COMMENT ''收货人快照'' AFTER `sku_specs`');
+CALL add_column_if_missing('tb_mall_order', 'receiver_phone', 'varchar(32) NULL COMMENT ''收货手机号快照'' AFTER `receiver_name`');
+CALL add_column_if_missing('tb_mall_order', 'receiver_address', 'varchar(255) NULL COMMENT ''收货地址快照'' AFTER `receiver_phone`');
+CALL add_column_if_missing('tb_mall_order', 'logistics_company', 'varchar(80) NULL COMMENT ''物流公司'' AFTER `receiver_address`');
+CALL add_column_if_missing('tb_mall_order', 'logistics_no', 'varchar(80) NULL COMMENT ''物流单号'' AFTER `logistics_company`');
+CALL add_column_if_missing('tb_mall_order', 'refund_reason', 'varchar(255) NULL COMMENT ''退款原因'' AFTER `logistics_no`');
+CALL add_column_if_missing('tb_mall_order', 'refund_remark', 'varchar(255) NULL COMMENT ''退款处理备注'' AFTER `refund_reason`');
+CALL add_column_if_missing('tb_mall_order', 'promotion_discount_amount', 'bigint UNSIGNED NOT NULL DEFAULT 0 COMMENT ''活动优惠金额'' AFTER `discount_amount`');
+CALL add_column_if_missing('tb_mall_order', 'refund_time', 'timestamp NULL DEFAULT NULL COMMENT ''退款完成时间''');
+
+CALL add_column_if_missing('tb_voucher', 'scope_type', 'varchar(32) NULL COMMENT ''券作用范围：SHOP/PRODUCT/CATEGORY/PLATFORM'' AFTER `product_id`');
+CALL add_column_if_missing('tb_voucher', 'category_id', 'bigint UNSIGNED NULL COMMENT ''类目券绑定类目id'' AFTER `scope_type`');
+CALL add_column_if_missing('tb_voucher', 'platform_id', 'bigint UNSIGNED NULL COMMENT ''平台券主体id'' AFTER `category_id`');
+
+CREATE TABLE IF NOT EXISTS `tb_mall_category` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `parent_id` bigint UNSIGNED NOT NULL DEFAULT 0 COMMENT '父类目id，0为一级类目',
+  `name` varchar(64) NOT NULL COMMENT '类目名称',
+  `icon` varchar(255) NULL COMMENT '类目图标',
+  `level` tinyint UNSIGNED NOT NULL DEFAULT 1 COMMENT '层级：1一级，2二级',
+  `sort` int NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` tinyint UNSIGNED NOT NULL DEFAULT 1 COMMENT '状态：1启用，0停用',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_parent_sort` (`parent_id`, `sort`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商城类目表';
+
+CREATE TABLE IF NOT EXISTS `tb_mall_sku` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `product_id` bigint UNSIGNED NOT NULL COMMENT '商品id',
+  `sku_name` varchar(120) NULL COMMENT 'SKU名称',
+  `specs` varchar(512) NULL COMMENT '规格JSON',
+  `image` varchar(512) NULL COMMENT 'SKU图片',
+  `price` bigint UNSIGNED NOT NULL COMMENT '价格，单位分',
+  `origin_price` bigint UNSIGNED NULL COMMENT '划线价，单位分',
+  `stock` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '库存',
+  `sold` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '销量',
+  `status` tinyint UNSIGNED NOT NULL DEFAULT 1 COMMENT '状态：1上架，0下架',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_product_status` (`product_id`, `status`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品SKU表';
+
+CREATE TABLE IF NOT EXISTS `tb_user_address` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '用户id',
+  `receiver_name` varchar(64) NOT NULL COMMENT '收货人',
+  `phone` varchar(32) NOT NULL COMMENT '手机号',
+  `province` varchar(64) NULL COMMENT '省',
+  `city` varchar(64) NULL COMMENT '市',
+  `district` varchar(64) NULL COMMENT '区县',
+  `detail_address` varchar(255) NOT NULL COMMENT '详细地址',
+  `default_flag` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否默认地址',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_user_default` (`user_id`, `default_flag`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户收货地址表';
+
+CREATE TABLE IF NOT EXISTS `tb_mall_logistics` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `order_id` bigint UNSIGNED NOT NULL COMMENT '订单id',
+  `merchant_id` bigint UNSIGNED NOT NULL COMMENT '商家id',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '用户id',
+  `company` varchar(80) NULL COMMENT '物流公司',
+  `tracking_no` varchar(80) NULL COMMENT '物流单号',
+  `status` varchar(32) NOT NULL DEFAULT 'CREATED' COMMENT '物流状态',
+  `traces` text NULL COMMENT '物流轨迹JSON',
+  `ship_time` timestamp NULL DEFAULT NULL COMMENT '发货时间',
+  `signed_time` timestamp NULL DEFAULT NULL COMMENT '签收时间',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_order_id` (`order_id`) USING BTREE,
+  KEY `idx_user_time` (`user_id`, `create_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商城物流表';
+
+CREATE TABLE IF NOT EXISTS `tb_mall_refund` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `order_id` bigint UNSIGNED NOT NULL COMMENT '订单id',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '用户id',
+  `merchant_id` bigint UNSIGNED NOT NULL COMMENT '商家id',
+  `amount` bigint UNSIGNED NOT NULL DEFAULT 0 COMMENT '退款金额',
+  `reason` varchar(255) NULL COMMENT '退款原因',
+  `images` varchar(1024) NULL COMMENT '退款凭证图片',
+  `status` tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT '状态：0待处理，1退款成功，2拒绝',
+  `merchant_remark` varchar(255) NULL COMMENT '商家处理备注',
+  `apply_time` timestamp NULL DEFAULT NULL COMMENT '申请时间',
+  `handle_time` timestamp NULL DEFAULT NULL COMMENT '处理时间',
+  `refund_time` timestamp NULL DEFAULT NULL COMMENT '退款完成时间',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_order_id` (`order_id`) USING BTREE,
+  KEY `idx_merchant_status` (`merchant_id`, `status`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商城售后退款表';
+
+CREATE TABLE IF NOT EXISTS `tb_mall_review` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `order_id` bigint UNSIGNED NOT NULL COMMENT '订单id',
+  `product_id` bigint UNSIGNED NOT NULL COMMENT '商品id',
+  `sku_id` bigint UNSIGNED NULL COMMENT 'SKU id',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '用户id',
+  `merchant_id` bigint UNSIGNED NOT NULL COMMENT '商家id',
+  `rating` tinyint UNSIGNED NOT NULL DEFAULT 5 COMMENT '评分1-5',
+  `content` varchar(500) NULL COMMENT '评价内容',
+  `images` varchar(1024) NULL COMMENT '评价图片',
+  `status` tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT '状态：0正常，1隐藏',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_order_user` (`order_id`, `user_id`) USING BTREE,
+  KEY `idx_product_time` (`product_id`, `create_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品评价表';
+
+CREATE TABLE IF NOT EXISTS `tb_mall_favorite` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '用户id',
+  `target_type` varchar(32) NOT NULL COMMENT '收藏类型：PRODUCT/SHOP',
+  `target_id` bigint UNSIGNED NOT NULL COMMENT '收藏对象id',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_user_target` (`user_id`, `target_type`, `target_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商城收藏表';
+
+CREATE TABLE IF NOT EXISTS `tb_mall_promotion` (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `merchant_id` bigint UNSIGNED NULL COMMENT '商家id',
+  `product_id` bigint UNSIGNED NULL COMMENT '商品id',
+  `type` varchar(32) NOT NULL COMMENT '活动类型：FULL_REDUCTION/LIMITED_DISCOUNT/SECKILL/BUNDLE',
+  `title` varchar(80) NOT NULL COMMENT '活动标题',
+  `threshold_amount` bigint UNSIGNED NULL COMMENT '门槛金额',
+  `discount_amount` bigint UNSIGNED NULL COMMENT '优惠金额',
+  `discount_rate` int UNSIGNED NULL COMMENT '折扣率，90表示9折',
+  `bundle_product_ids` varchar(255) NULL COMMENT '组合商品id列表',
+  `status` tinyint UNSIGNED NOT NULL DEFAULT 1 COMMENT '状态：1启用，0停用',
+  `begin_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开始时间',
+  `end_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '结束时间',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_merchant_product_time` (`merchant_id`, `product_id`, `begin_time`, `end_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商城营销活动表';
+
+INSERT INTO `tb_mall_category` (`id`, `parent_id`, `name`, `level`, `sort`, `status`)
+VALUES
+  (1, 0, '美食', 1, 10, 1),
+  (2, 0, '穿搭', 1, 20, 1),
+  (3, 0, '旅行', 1, 30, 1),
+  (4, 0, '数码', 1, 40, 1),
+  (5, 0, '好物', 1, 50, 1),
+  (101, 1, '零食饮品', 2, 10, 1),
+  (102, 1, '地方特产', 2, 20, 1),
+  (201, 2, '女装', 2, 10, 1),
+  (202, 2, '鞋包配饰', 2, 20, 1),
+  (401, 4, '手机配件', 2, 10, 1),
+  (402, 4, '智能设备', 2, 20, 1),
+  (501, 5, '家居日用', 2, 10, 1),
+  (502, 5, '个护清洁', 2, 20, 1)
+ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `status` = VALUES(`status`);

@@ -808,9 +808,12 @@ img {
   right: 12px;
   z-index: 3;
   display: inline-flex;
+  max-width: min(520px, calc(100% - 24px));
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  border-radius: var(--r-pill);
+  justify-content: flex-end;
+  border-radius: 16px;
   background: rgba(0, 0, 0, .34);
   color: #fff;
   padding: 7px 9px;
@@ -835,9 +838,24 @@ img {
   font-weight: 800;
 }
 
-.danmaku-controls input {
+.danmaku-controls input[type="range"] {
   width: 74px;
   accent-color: var(--accent);
+}
+
+.danmaku-controls input[type="text"] {
+  width: 112px;
+  height: 26px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, .14);
+  color: #fff;
+  outline: 0;
+  padding: 0 9px;
+}
+
+.danmaku-controls input[type="text"]::placeholder {
+  color: rgba(255, 255, 255, .58);
 }
 
 /* Mall home, product cards, and commerce dialogs */

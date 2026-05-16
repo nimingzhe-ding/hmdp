@@ -47,6 +47,9 @@ public class Voucher implements Serializable {
      * 绑定商品id。为空时表示商家全店可用券。
      */
     private Long productId;
+    private String scopeType;
+    private Long categoryId;
+    private Long platformId;
 
     /**
      * 代金券标题

@@ -457,6 +457,12 @@ public class ContentServiceImpl implements IContentService {
             wrapper.last("ORDER BY (IFNULL(liked, 0) * 3 + IFNULL(comments, 0) * 2 + " +
                     "(SELECT COUNT(1) FROM tb_blog_collect c WHERE c.blog_id = tb_blog.id) * 4 + " +
                     "GREATEST(0, 72 - TIMESTAMPDIFF(HOUR, create_time, NOW()))) DESC, create_time DESC");
+        } else if ("video".equals(normalizedChannel)) {
+            wrapper.last("ORDER BY (IFNULL(liked, 0) * 4 + IFNULL(comments, 0) * 3 + " +
+                    "(SELECT COUNT(1) FROM tb_blog_collect c WHERE c.blog_id = tb_blog.id) * 5 + " +
+                    "(SELECT IFNULL(SUM(CASE WHEN m.completed = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(1), 0), 0) FROM tb_video_play_metric m WHERE m.blog_id = tb_blog.id) * 80 + " +
+                    "(SELECT COUNT(1) FROM tb_mall_order o WHERE o.product_id IN (SELECT bp.product_id FROM tb_blog_product bp WHERE bp.blog_id = tb_blog.id) AND o.status IN (2,3,4,5)) * 8 + " +
+                    "GREATEST(0, 48 - TIMESTAMPDIFF(HOUR, create_time, NOW()))) DESC, create_time DESC");
         } else if ("nearby".equals(normalizedChannel)) {
             wrapper.last("ORDER BY CASE WHEN shop_id IS NULL THEN 1 ELSE 0 END ASC, create_time DESC");
         } else {

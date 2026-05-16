@@ -11,34 +11,26 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 商城商品。
- * 第一版商城以内容社区带货为目标，先支持商品展示、库存、价格和销量。
+ * 订单物流信息。
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@TableName("tb_mall_product")
-public class MallProduct implements Serializable {
+@TableName("tb_mall_logistics")
+public class MallLogistics implements Serializable {
     private static final long serialVersionUID = 1L;
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
+    private Long orderId;
     private Long merchantId;
-    private String title;
-    private String subTitle;
-    private String images;
-    private Long price;
-    private Long originPrice;
-    private Integer stock;
-    private Integer sold;
-    private String category;
-    private Long categoryId;
-    private Long subCategoryId;
-    private String specSummary;
-    private Integer score;
-    private Integer reviewCount;
-    private Integer favoriteCount;
-    private Integer status;
+    private Long userId;
+    private String company;
+    private String trackingNo;
+    private String status;
+    private String traces;
+    private LocalDateTime shipTime;
+    private LocalDateTime signedTime;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

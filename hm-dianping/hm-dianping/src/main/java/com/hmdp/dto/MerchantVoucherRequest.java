@@ -8,6 +8,9 @@ import lombok.Data;
 @Data
 public class MerchantVoucherRequest {
     private Long productId;
+    private String scopeType;
+    private Long categoryId;
+    private Long platformId;
     private String title;
     private String subTitle;
     private String rules;

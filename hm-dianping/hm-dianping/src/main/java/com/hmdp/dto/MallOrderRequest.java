@@ -9,7 +9,10 @@ import lombok.Data;
 @Data
 public class MallOrderRequest {
     private Long productId;
+    private Long skuId;
+    private Long addressId;
     private Long cartItemId;
     private Long voucherId;
+    private Boolean autoBestCoupon;
     private Integer quantity;
 }

@@ -11,33 +11,26 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 商城商品。
- * 第一版商城以内容社区带货为目标，先支持商品展示、库存、价格和销量。
+ * 商品 SKU。
+ * specs 使用 JSON 文本保存颜色、尺寸、套餐、口味等规格组合。
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@TableName("tb_mall_product")
-public class MallProduct implements Serializable {
+@TableName("tb_mall_sku")
+public class MallSku implements Serializable {
     private static final long serialVersionUID = 1L;
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
-    private Long merchantId;
-    private String title;
-    private String subTitle;
-    private String images;
+    private Long productId;
+    private String skuName;
+    private String specs;
+    private String image;
     private Long price;
     private Long originPrice;
     private Integer stock;
     private Integer sold;
-    private String category;
-    private Long categoryId;
-    private Long subCategoryId;
-    private String specSummary;
-    private Integer score;
-    private Integer reviewCount;
-    private Integer favoriteCount;
     private Integer status;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;

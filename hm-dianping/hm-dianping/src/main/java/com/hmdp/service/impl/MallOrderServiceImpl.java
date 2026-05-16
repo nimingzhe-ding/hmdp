@@ -6,12 +6,20 @@ import com.hmdp.dto.MallOrderRequest;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.MallCartItem;
+import com.hmdp.entity.MallLogistics;
 import com.hmdp.entity.MallOrder;
 import com.hmdp.entity.MallProduct;
+import com.hmdp.entity.MallRefund;
+import com.hmdp.entity.MallSku;
 import com.hmdp.entity.MerchantNotification;
+import com.hmdp.entity.UserAddress;
 import com.hmdp.entity.Voucher;
+import com.hmdp.mapper.MallLogisticsMapper;
 import com.hmdp.mapper.MallOrderMapper;
+import com.hmdp.mapper.MallRefundMapper;
+import com.hmdp.mapper.MallSkuMapper;
 import com.hmdp.mapper.MerchantNotificationMapper;
+import com.hmdp.mapper.UserAddressMapper;
 import com.hmdp.service.IMallCartService;
 import com.hmdp.service.IMallOrderService;
 import com.hmdp.service.IMallProductService;
@@ -25,9 +33,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 商城订单服务实现。
+ * 订单保存商品、SKU、地址、优惠和物流快照，避免后续商品资料变化影响历史订单。
  */
 @Slf4j
 @Service
@@ -40,6 +50,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     public static final int STATUS_COMPLETED = 5;
     public static final int STATUS_CANCELLED = 6;
     public static final int STATUS_REFUNDING = 7;
+    public static final int STATUS_REFUNDED = 8;
 
     @Resource
     private IMallProductService productService;
@@ -53,6 +64,14 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     private MerchantNotificationMapper notificationMapper;
     @Resource
     private IUserNotificationService userNotificationService;
+    @Resource
+    private MallSkuMapper skuMapper;
+    @Resource
+    private UserAddressMapper addressMapper;
+    @Resource
+    private MallLogisticsMapper logisticsMapper;
+    @Resource
+    private MallRefundMapper refundMapper;
 
     @Override
     @Transactional
@@ -78,13 +97,33 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         if (product == null || product.getStatus() == null || product.getStatus() != 1) {
             return Result.fail("商品不存在或已下架");
         }
-        if (product.getStock() == null || product.getStock() < quantity) {
+        MallSku sku;
+        try {
+            sku = loadSku(request.getSkuId(), productId);
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
+        }
+        int stock = sku == null ? safeInt(product.getStock()) : safeInt(sku.getStock());
+        if (stock < quantity) {
             return Result.fail("库存不足");
         }
 
-        long originalAmount = (product.getPrice() == null ? 0L : product.getPrice()) * quantity;
-        Voucher voucher = resolveVoucher(request.getVoucherId(), product, originalAmount);
-        long discountAmount = voucher == null ? 0L : Math.min(voucher.getActualValue(), originalAmount);
+        UserAddress address = loadOrderAddress(request.getAddressId(), user.getId());
+        if (address == null) {
+            return Result.fail("请先选择收货地址");
+        }
+
+        long unitPrice = sku == null || sku.getPrice() == null ? safeLong(product.getPrice()) : sku.getPrice();
+        long originalAmount = unitPrice * quantity;
+        Voucher voucher;
+        try {
+            voucher = Boolean.TRUE.equals(request.getAutoBestCoupon())
+                    ? chooseBestVoucher(product, originalAmount)
+                    : resolveVoucher(request.getVoucherId(), product, originalAmount);
+        } catch (IllegalArgumentException e) {
+            return Result.fail(e.getMessage());
+        }
+        long discountAmount = voucher == null ? 0L : Math.min(safeLong(voucher.getActualValue()), originalAmount);
         LocalDateTime now = LocalDateTime.now();
 
         MallOrder order = new MallOrder();
@@ -92,12 +131,20 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         order.setUserId(user.getId());
         order.setMerchantId(product.getMerchantId());
         order.setProductId(productId);
+        order.setSkuId(sku == null ? null : sku.getId());
+        order.setAddressId(address.getId());
         order.setVoucherId(voucher == null ? null : voucher.getId());
         order.setProductTitle(product.getTitle());
-        order.setProductImage(firstImage(product.getImages()));
-        order.setPrice(product.getPrice());
+        order.setProductImage(firstImage(sku == null || sku.getImage() == null ? product.getImages() : sku.getImage()));
+        order.setSkuName(sku == null ? null : sku.getSkuName());
+        order.setSkuSpecs(sku == null ? null : sku.getSpecs());
+        order.setReceiverName(address.getReceiverName());
+        order.setReceiverPhone(address.getPhone());
+        order.setReceiverAddress(formatAddress(address));
+        order.setPrice(unitPrice);
         order.setQuantity(quantity);
         order.setDiscountAmount(discountAmount);
+        order.setPromotionDiscountAmount(0L);
         order.setTotalAmount(Math.max(0, originalAmount - discountAmount));
         order.setStatus(STATUS_PENDING_PAY);
         order.setCreateTime(now);
@@ -105,7 +152,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         save(order);
 
         userNotificationService.notifyUser(user.getId(), null, "ORDER_CREATED", "订单已创建",
-                "你购买的「" + order.getProductTitle() + "」已生成订单，等待支付。", null, order.getId());
+                "你购买的《" + order.getProductTitle() + "》已生成订单，等待支付。", null, order.getId());
         notifyMerchant(order.getMerchantId(), "order_created", order);
         if (cartItem != null) {
             cartService.removeById(cartItem.getId());
@@ -134,17 +181,12 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         MallOrder order = getOrderAndCheckOwner(orderId, user.getId());
         if (order == null) return Result.fail("订单不存在");
 
-        boolean stockUpdated = productService.update()
-                .setSql("stock = stock - " + order.getQuantity())
-                .setSql("sold = IFNULL(sold, 0) + " + order.getQuantity())
-                .eq("id", order.getProductId())
-                .ge("stock", order.getQuantity())
-                .update();
+        boolean stockUpdated = decreaseStock(order);
         if (!stockUpdated) return Result.fail("库存不足，支付失败");
 
         LocalDateTime now = LocalDateTime.now();
         boolean updated = update()
-                .set("status", STATUS_PAID)
+                .set("status", STATUS_PENDING_SHIP)
                 .set("pay_time", now)
                 .set("update_time", now)
                 .eq("id", orderId)
@@ -152,16 +194,12 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .eq("status", STATUS_PENDING_PAY)
                 .update();
         if (!updated) {
-            productService.update()
-                    .setSql("stock = stock + " + order.getQuantity())
-                    .setSql("sold = GREATEST(IFNULL(sold, 0) - " + order.getQuantity() + ", 0)")
-                    .eq("id", order.getProductId())
-                    .update();
+            rollbackStock(order);
             return Result.fail("当前订单状态不能支付");
         }
         notifyMerchant(order.getMerchantId(), "order_paid", order);
         userNotificationService.notifyUser(order.getUserId(), null, "ORDER_PAID", "订单已支付",
-                "你购买的「" + order.getProductTitle() + "」已支付成功，等待商家发货。", null, order.getId());
+                "你购买的《" + order.getProductTitle() + "》已支付成功，等待商家发货。", null, order.getId());
         return Result.ok(loadOrder(orderId));
     }
 
@@ -181,8 +219,9 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .eq("status", STATUS_PENDING_SHIP)
                 .update();
         if (!updated) return Result.fail("当前订单状态不能发货");
+        saveLogistics(order, null, null, "SHIPPED", now, null);
         userNotificationService.notifyUser(order.getUserId(), null, "ORDER_SHIPPED", "商家已发货",
-                "你购买的「" + order.getProductTitle() + "」已发货。", null, order.getId());
+                "你购买的《" + order.getProductTitle() + "》已发货。", null, order.getId());
         return Result.ok(loadOrder(orderId));
     }
 
@@ -203,8 +242,11 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         if (!updated) return Result.fail("当前订单状态不能确认收货");
 
         MallOrder order = loadOrder(orderId);
+        if (order != null) {
+            saveLogistics(order, order.getLogisticsCompany(), order.getLogisticsNo(), "SIGNED", order.getShipTime(), now);
+        }
         userNotificationService.notifyUser(user.getId(), null, "ORDER_COMPLETED", "订单已完成",
-                "订单「" + (order == null ? orderId : order.getProductTitle()) + "」已完成。", null, orderId);
+                "订单《" + (order == null ? orderId : order.getProductTitle()) + "》已完成。", null, orderId);
         return Result.ok(order);
     }
 
@@ -215,7 +257,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         MallOrder order = getOrderAndCheckOwner(orderId, user.getId());
         if (order == null) return Result.fail("订单不存在");
         if (order.getStatus() != STATUS_PENDING_PAY) {
-            return Result.fail("只有待支付的订单才能取消");
+            return Result.fail("只有待支付订单才能取消");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -229,32 +271,105 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .update();
         if (!updated) return Result.fail("取消订单失败");
         userNotificationService.notifyUser(user.getId(), null, "ORDER_CANCELLED", "订单已取消",
-                "你购买的「" + order.getProductTitle() + "」订单已取消。", null, orderId);
+                "你购买的《" + order.getProductTitle() + "》订单已取消。", null, orderId);
         return Result.ok(loadOrder(orderId));
     }
 
     @Override
+    @Transactional
     public Result refundOrder(Long orderId) {
         UserDTO user = UserHolder.getUser();
         if (user == null) return Result.fail("请先登录");
         MallOrder order = getOrderAndCheckOwner(orderId, user.getId());
         if (order == null) return Result.fail("订单不存在");
-        if (order.getStatus() != STATUS_PAID && order.getStatus() != STATUS_PENDING_SHIP) {
+        if (order.getStatus() != STATUS_PAID && order.getStatus() != STATUS_PENDING_SHIP && order.getStatus() != STATUS_SHIPPED) {
             return Result.fail("当前订单状态不能申请退款");
+        }
+        if (refundMapper.selectCount(new LambdaQueryWrapper<MallRefund>()
+                .eq(MallRefund::getOrderId, orderId)
+                .in(MallRefund::getStatus, 0, 1)) > 0) {
+            return Result.fail("该订单已有售后处理中");
         }
 
         LocalDateTime now = LocalDateTime.now();
         boolean updated = update()
                 .set("status", STATUS_REFUNDING)
+                .set("refund_reason", "用户申请退款")
                 .set("update_time", now)
                 .eq("id", orderId)
                 .eq("user_id", user.getId())
-                .in("status", STATUS_PAID, STATUS_PENDING_SHIP)
+                .in("status", STATUS_PAID, STATUS_PENDING_SHIP, STATUS_SHIPPED)
                 .update();
         if (!updated) return Result.fail("申请退款失败");
+
+        MallRefund refund = new MallRefund()
+                .setOrderId(orderId)
+                .setUserId(user.getId())
+                .setMerchantId(order.getMerchantId())
+                .setAmount(order.getTotalAmount())
+                .setReason("用户申请退款")
+                .setStatus(0)
+                .setApplyTime(now)
+                .setCreateTime(now)
+                .setUpdateTime(now);
+        refundMapper.insert(refund);
         userNotificationService.notifyUser(user.getId(), null, "ORDER_REFUNDING", "退款申请已提交",
-                "你购买的「" + order.getProductTitle() + "」已提交退款申请。", null, orderId);
+                "你购买的《" + order.getProductTitle() + "》已提交退款申请。", null, orderId);
+        notifyMerchant(order.getMerchantId(), "order_refund", order);
         return Result.ok(loadOrder(orderId));
+    }
+
+    private boolean decreaseStock(MallOrder order) {
+        if (order.getSkuId() != null) {
+            return skuMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<MallSku>()
+                    .setSql("stock = stock - " + order.getQuantity())
+                    .setSql("sold = IFNULL(sold, 0) + " + order.getQuantity())
+                    .eq(MallSku::getId, order.getSkuId())
+                    .ge(MallSku::getStock, order.getQuantity())) > 0;
+        }
+        return productService.update()
+                .setSql("stock = stock - " + order.getQuantity())
+                .setSql("sold = IFNULL(sold, 0) + " + order.getQuantity())
+                .eq("id", order.getProductId())
+                .ge("stock", order.getQuantity())
+                .update();
+    }
+
+    private void rollbackStock(MallOrder order) {
+        if (order.getSkuId() != null) {
+            skuMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<MallSku>()
+                    .setSql("stock = stock + " + order.getQuantity())
+                    .setSql("sold = GREATEST(IFNULL(sold, 0) - " + order.getQuantity() + ", 0)")
+                    .eq(MallSku::getId, order.getSkuId()));
+            return;
+        }
+        productService.update()
+                .setSql("stock = stock + " + order.getQuantity())
+                .setSql("sold = GREATEST(IFNULL(sold, 0) - " + order.getQuantity() + ", 0)")
+                .eq("id", order.getProductId())
+                .update();
+    }
+
+    private MallSku loadSku(Long skuId, Long productId) {
+        if (skuId == null) {
+            return null;
+        }
+        MallSku sku = skuMapper.selectById(skuId);
+        if (sku == null || !productId.equals(sku.getProductId()) || sku.getStatus() == null || sku.getStatus() != 1) {
+            throw new IllegalArgumentException("SKU不存在或已下架");
+        }
+        return sku;
+    }
+
+    private UserAddress loadOrderAddress(Long addressId, Long userId) {
+        if (addressId != null) {
+            UserAddress address = addressMapper.selectById(addressId);
+            return address != null && userId.equals(address.getUserId()) ? address : null;
+        }
+        return addressMapper.selectOne(new LambdaQueryWrapper<UserAddress>()
+                .eq(UserAddress::getUserId, userId)
+                .eq(UserAddress::getDefaultFlag, true)
+                .last("limit 1"));
     }
 
     private MallOrder getOrderAndCheckOwner(Long orderId, Long userId) {
@@ -269,25 +384,91 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         return getById(orderId);
     }
 
+    private Voucher chooseBestVoucher(MallProduct product, long originalAmount) {
+        List<Voucher> vouchers = voucherService.query()
+                .eq("status", 1)
+                .and(wrapper -> wrapper
+                        .eq(product.getMerchantId() != null, "merchant_id", product.getMerchantId())
+                        .or()
+                        .eq("scope_type", "PLATFORM")
+                        .or()
+                        .eq(product.getId() != null, "product_id", product.getId())
+                        .or()
+                        .eq(product.getCategoryId() != null, "category_id", product.getCategoryId())
+                        .or()
+                        .eq(product.getSubCategoryId() != null, "category_id", product.getSubCategoryId()))
+                .list();
+        Voucher best = null;
+        long bestDiscount = 0;
+        for (Voucher voucher : vouchers) {
+            if (!isVoucherUsable(voucher, product, originalAmount)) {
+                continue;
+            }
+            long discount = Math.min(safeLong(voucher.getActualValue()), originalAmount);
+            if (discount > bestDiscount) {
+                best = voucher;
+                bestDiscount = discount;
+            }
+        }
+        return best;
+    }
+
     private Voucher resolveVoucher(Long voucherId, MallProduct product, long originalAmount) {
         if (voucherId == null) return null;
         Voucher voucher = voucherService.getById(voucherId);
-        if (voucher == null || voucher.getStatus() == null || voucher.getStatus() != 1) {
+        if (!isVoucherUsable(voucher, product, originalAmount)) {
             throw new IllegalArgumentException("优惠券不可用");
         }
-        if (voucher.getMerchantId() == null || !voucher.getMerchantId().equals(product.getMerchantId())) {
-            throw new IllegalArgumentException("优惠券不属于该商家");
-        }
-        if (voucher.getProductId() != null && !voucher.getProductId().equals(product.getId())) {
-            throw new IllegalArgumentException("优惠券不适用于该商品");
+        return voucher;
+    }
+
+    private boolean isVoucherUsable(Voucher voucher, MallProduct product, long originalAmount) {
+        if (voucher == null || voucher.getStatus() == null || voucher.getStatus() != 1) {
+            return false;
         }
         if (voucher.getPayValue() != null && originalAmount < voucher.getPayValue()) {
-            throw new IllegalArgumentException("订单金额未达到优惠券门槛");
+            return false;
         }
         if (voucher.getActualValue() == null || voucher.getActualValue() <= 0) {
-            throw new IllegalArgumentException("优惠券金额异常");
+            return false;
         }
-        return voucher;
+        if ("PLATFORM".equalsIgnoreCase(voucher.getScopeType())) {
+            return true;
+        }
+        if (voucher.getProductId() != null && voucher.getProductId().equals(product.getId())) {
+            return true;
+        }
+        if (voucher.getCategoryId() != null && (voucher.getCategoryId().equals(product.getCategoryId())
+                || voucher.getCategoryId().equals(product.getSubCategoryId()))) {
+            return true;
+        }
+        return voucher.getMerchantId() != null && voucher.getMerchantId().equals(product.getMerchantId());
+    }
+
+    private void saveLogistics(MallOrder order, String company, String trackingNo, String status,
+                               LocalDateTime shipTime, LocalDateTime signedTime) {
+        MallLogistics logistics = logisticsMapper.selectOne(new LambdaQueryWrapper<MallLogistics>()
+                .eq(MallLogistics::getOrderId, order.getId())
+                .last("limit 1"));
+        LocalDateTime now = LocalDateTime.now();
+        if (logistics == null) {
+            logistics = new MallLogistics()
+                    .setOrderId(order.getId())
+                    .setMerchantId(order.getMerchantId())
+                    .setUserId(order.getUserId())
+                    .setCreateTime(now);
+        }
+        logistics.setCompany(company == null ? order.getLogisticsCompany() : company);
+        logistics.setTrackingNo(trackingNo == null ? order.getLogisticsNo() : trackingNo);
+        logistics.setStatus(status);
+        logistics.setShipTime(shipTime);
+        logistics.setSignedTime(signedTime);
+        logistics.setUpdateTime(now);
+        if (logistics.getId() == null) {
+            logisticsMapper.insert(logistics);
+        } else {
+            logisticsMapper.updateById(logistics);
+        }
     }
 
     private String firstImage(String images) {
@@ -295,6 +476,28 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
             return "";
         }
         return images.split(",")[0].trim();
+    }
+
+    private String formatAddress(UserAddress address) {
+        return join(address.getProvince(), address.getCity(), address.getDistrict(), address.getDetailAddress());
+    }
+
+    private String join(String... values) {
+        StringBuilder builder = new StringBuilder();
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                builder.append(value.trim());
+            }
+        }
+        return builder.toString();
+    }
+
+    private int safeInt(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private long safeLong(Long value) {
+        return value == null ? 0L : value;
     }
 
     private void notifyMerchant(Long merchantId, String type, MallOrder order) {

@@ -14,5 +14,8 @@ public class MerchantProductRequest {
     private Long originPrice;
     private Integer stock;
     private String category;
+    private Long categoryId;
+    private Long subCategoryId;
+    private String specSummary;
     private Integer status;
 }

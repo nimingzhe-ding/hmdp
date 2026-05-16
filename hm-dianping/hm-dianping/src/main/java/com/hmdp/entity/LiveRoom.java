@@ -1,6 +1,7 @@
 package com.hmdp.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -9,36 +10,39 @@ import lombok.experimental.Accessors;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
- * 商城商品。
- * 第一版商城以内容社区带货为目标，先支持商品展示、库存、价格和销量。
+ * 直播间主体。
+ * 承载主播、商家、直播状态、回放视频和直播间实时统计。
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
-@TableName("tb_mall_product")
-public class MallProduct implements Serializable {
+@TableName("tb_live_room")
+public class LiveRoom implements Serializable {
     private static final long serialVersionUID = 1L;
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
     private Long merchantId;
+    private Long anchorUserId;
+    private Long blogId;
     private String title;
-    private String subTitle;
-    private String images;
-    private Long price;
-    private Long originPrice;
-    private Integer stock;
-    private Integer sold;
-    private String category;
-    private Long categoryId;
-    private Long subCategoryId;
-    private String specSummary;
-    private Integer score;
-    private Integer reviewCount;
-    private Integer favoriteCount;
+    private String coverUrl;
+    private String streamUrl;
+    private String replayVideoUrl;
     private Integer status;
+    private Integer onlineCount;
+    private Integer liked;
+    private LocalDateTime startTime;
+    private LocalDateTime endTime;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
+
+    @TableField(exist = false)
+    private List<Long> productIds;
+
+    @TableField(exist = false)
+    private List<LiveRoomProduct> products;
 }

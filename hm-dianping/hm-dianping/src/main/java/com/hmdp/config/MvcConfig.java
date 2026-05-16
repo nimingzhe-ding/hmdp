@@ -39,6 +39,7 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/voucher/**",
                         "/mall/products/**",
                         "/content/**",
+                        "/live/public/**",
                         "/note-event",
                         "/video-danmaku/public/**",
                         "/blog-comments/of/blog",

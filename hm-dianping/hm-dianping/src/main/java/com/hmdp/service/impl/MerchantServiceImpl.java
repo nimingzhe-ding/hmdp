@@ -106,6 +106,12 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                 .setStock(request.getStock())
                 .setSold(0)
                 .setCategory(StrUtil.blankToDefault(request.getCategory(), "all"))
+                .setCategoryId(request.getCategoryId())
+                .setSubCategoryId(request.getSubCategoryId())
+                .setSpecSummary(request.getSpecSummary())
+                .setScore(0)
+                .setReviewCount(0)
+                .setFavoriteCount(0)
                 .setStatus(request.getStatus() == null ? 1 : request.getStatus())
                 .setCreateTime(now)
                 .setUpdateTime(now);
@@ -135,6 +141,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         if (request.getOriginPrice() != null) product.setOriginPrice(request.getOriginPrice());
         if (request.getStock() != null && request.getStock() >= 0) product.setStock(request.getStock());
         if (StrUtil.isNotBlank(request.getCategory())) product.setCategory(request.getCategory());
+        if (request.getCategoryId() != null) product.setCategoryId(request.getCategoryId());
+        if (request.getSubCategoryId() != null) product.setSubCategoryId(request.getSubCategoryId());
+        if (request.getSpecSummary() != null) product.setSpecSummary(request.getSpecSummary());
         if (request.getStatus() != null) product.setStatus(request.getStatus());
         product.setUpdateTime(now);
         productService.updateById(product);
@@ -325,6 +334,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         Voucher voucher = new Voucher()
                 .setMerchantId(merchant.getId())
                 .setProductId(request.getProductId())
+                .setScopeType(StrUtil.blankToDefault(request.getScopeType(), request.getProductId() == null ? "SHOP" : "PRODUCT"))
+                .setCategoryId(request.getCategoryId())
+                .setPlatformId(request.getPlatformId())
                 .setTitle(request.getTitle())
                 .setSubTitle(request.getSubTitle())
                 .setRules(request.getRules())
@@ -355,6 +367,9 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         if (StrUtil.isNotBlank(request.getTitle())) voucher.setTitle(request.getTitle());
         if (request.getSubTitle() != null) voucher.setSubTitle(request.getSubTitle());
         if (request.getRules() != null) voucher.setRules(request.getRules());
+        if (request.getScopeType() != null) voucher.setScopeType(request.getScopeType());
+        if (request.getCategoryId() != null) voucher.setCategoryId(request.getCategoryId());
+        if (request.getPlatformId() != null) voucher.setPlatformId(request.getPlatformId());
         if (request.getPayValue() != null) voucher.setPayValue(request.getPayValue());
         if (request.getActualValue() != null) voucher.setActualValue(request.getActualValue());
         voucher.setUpdateTime(now);

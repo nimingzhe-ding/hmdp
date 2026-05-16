@@ -26,11 +26,23 @@ public class MallOrder implements Serializable {
     private Long userId;
     private Long merchantId;
     private Long productId;
+    private Long skuId;
+    private Long addressId;
     private Long voucherId;
     private String productTitle;
     private String productImage;
+    private String skuName;
+    private String skuSpecs;
+    private String receiverName;
+    private String receiverPhone;
+    private String receiverAddress;
+    private String logisticsCompany;
+    private String logisticsNo;
+    private String refundReason;
+    private String refundRemark;
     private Long price;
     private Long discountAmount;
+    private Long promotionDiscountAmount;
     private Integer quantity;
     private Long totalAmount;
 
@@ -45,5 +57,6 @@ public class MallOrder implements Serializable {
     private LocalDateTime shipTime;
     private LocalDateTime receiveTime;
     private LocalDateTime cancelTime;
+    private LocalDateTime refundTime;
     private LocalDateTime updateTime;
 }
