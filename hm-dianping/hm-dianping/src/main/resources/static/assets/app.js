@@ -43,7 +43,10 @@ const state = {
   collected: new Set(JSON.parse(localStorage.getItem("hmdp_collected") || "[]")),
   followed: new Set(JSON.parse(localStorage.getItem("hmdp_followed") || "[]")),
   aiSessionId: localStorage.getItem("hmdp_ai_session") || crypto.randomUUID(),
-  notificationFilter: "all"
+  notificationFilter: "all",
+  aiSearchInsight: "",
+  aiComposerTimer: null,
+  aiCommentLoadedFor: null
 };
 
 localStorage.setItem("hmdp_ai_session", state.aiSessionId);
@@ -259,6 +262,31 @@ async function request(url, options = {}) {
   if (result.success === false) throw new Error(result.errorMsg || "请求失败");
   if (options.raw) return result;
   return result.data;
+}
+
+async function aiFlow(url, payload = {}) {
+  return request(url, {
+    method: "POST",
+    body: JSON.stringify({
+      sessionId: state.aiSessionId,
+      ...payload
+    })
+  });
+}
+
+async function checkAiRisk(content, scenario) {
+  if (!String(content || "").trim()) return true;
+  try {
+    const data = await aiFlow("/ai/flow/risk-check", { content, scenario });
+    const answer = String(data.answer || "");
+    if (answer.includes("风险等级：高") || answer.includes("高风险")) {
+      showStatus(`内容可能存在风险：${answer}`);
+      return false;
+    }
+  } catch {
+    // 风控接口降级时不阻塞用户流程，后端仍可继续做兜底校验。
+  }
+  return true;
 }
 
 function normalizeNote(note, index = 0) {
@@ -816,8 +844,8 @@ async function openDrawer(note) {
   document.querySelectorAll("[data-comment-sort]").forEach(button => {
     button.classList.toggle("is-active", button.dataset.commentSort === "hot");
   });
-  els.noteSmart.hidden = true;
-  els.noteSmartText.textContent = "";
+  els.noteSmart.hidden = false;
+  els.noteSmartText.textContent = "正在生成笔记亮点、避雷点、适合人群和推荐理由...";
   renderDrawerImages(note);
   document.querySelector("#drawerAvatar").src = normalizeImage(note.icon);
   document.querySelector("#drawerAuthor").textContent = note.name;
@@ -836,6 +864,7 @@ async function openDrawer(note) {
   document.querySelector("#drawerLike").onclick = () => likeNote(note);
   document.querySelector("#drawerCollect").onclick = () => toggleCollect(note);
   document.querySelector("#drawerFollow").onclick = () => toggleFollow(note);
+  document.querySelector("#drawerAnalyze").hidden = true;
   document.querySelector("#drawerAnalyze").onclick = () => analyzeCurrentNote(note);
   const editButton = document.querySelector("#drawerEdit");
   const deleteButton = document.querySelector("#drawerDelete");
@@ -849,6 +878,8 @@ async function openDrawer(note) {
   trackEvent("detail", { blogId: note.id, scene: "detail" });
   loadCollectState(note);
   loadComments(note.id);
+  analyzeCurrentNote(note);
+  loadRecommendReason(note);
 }
 
 function renderShopBridge(shop) {
@@ -1655,6 +1686,7 @@ async function submitComment(event) {
   if (!state.currentNote || !requireLogin()) return;
   const content = els.commentInput.value.trim();
   if (!content) return;
+  if (!(await checkAiRisk(content, "comment"))) return;
   try {
     const payload = {
       blogId: state.currentNote.id,
@@ -1675,6 +1707,49 @@ async function submitComment(event) {
   } catch {
     showStatus("评论失败，请确认已登录。");
   }
+}
+
+async function loadCommentSuggestions() {
+  if (!state.currentNote || state.aiCommentLoadedFor === state.currentNote.id) return;
+  state.aiCommentLoadedFor = state.currentNote.id;
+  const host = ensureCommentAiPanel();
+  host.innerHTML = `<span>正在生成自然评论建议...</span>`;
+  try {
+    const data = await aiFlow("/ai/flow/comment", {
+      noteId: state.currentNote.id,
+      title: state.currentNote.title,
+      content: state.currentNote.content,
+      query: state.replyTarget ? `回复 ${state.replyTarget.name || "评论"}` : "一级评论"
+    });
+    renderCommentSuggestions(data.answer || "");
+  } catch {
+    host.innerHTML = "";
+  }
+}
+
+function ensureCommentAiPanel() {
+  let panel = document.querySelector("#commentAiSuggestions");
+  if (!panel) {
+    els.commentForm.insertAdjacentHTML("beforebegin", `<div class="ai-suggestion-row" id="commentAiSuggestions"></div>`);
+    panel = document.querySelector("#commentAiSuggestions");
+  }
+  return panel;
+}
+
+function renderCommentSuggestions(answer) {
+  const panel = ensureCommentAiPanel();
+  const suggestions = answer
+    .split(/\n|[。；;]/)
+    .map(item => item.replace(/^\d+[\.、]\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  panel.innerHTML = suggestions.map(item => `<button type="button" data-comment-suggestion="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("");
+  panel.querySelectorAll("[data-comment-suggestion]").forEach(button => {
+    button.addEventListener("click", () => {
+      els.commentInput.value = button.dataset.commentSuggestion;
+      els.commentInput.focus();
+    });
+  });
 }
 
 // ------------------------------
@@ -1831,7 +1906,12 @@ function renderProducts(products) {
 async function openProduct(productId) {
   let product = state.mallProducts.find(item => String(item.id) === String(productId));
   try {
-    product = normalizeProduct(await request(`/mall/products/${productId}`));
+    const detail = await request(`/mall/products/${productId}`);
+    product = normalizeProduct(detail?.product || detail);
+    product.skus = Array.isArray(detail?.skus) ? detail.skus : [];
+    product.reviews = Array.isArray(detail?.reviews) ? detail.reviews : [];
+    product.coupons = Array.isArray(detail?.coupons) ? detail.coupons : [];
+    product.merchant = detail?.merchant || null;
   } catch {
     // 列表数据足够支撑第一版详情预览；详情接口异常时继续使用当前卡片数据。
   }
@@ -1844,9 +1924,52 @@ async function openProduct(productId) {
   document.querySelector("#productDialogSub").textContent = product.subTitle;
   document.querySelector("#productDialogPrice").textContent = `¥${formatMoney(product.price)}`;
   document.querySelector("#productDialogStock").textContent = `库存 ${product.stock} · 已售 ${product.sold}`;
+  ensureProductGuide(product);
   renderMallVouchers([]);
   els.productDialog.showModal();
-  loadMallVouchers(product.id);
+  if (product.coupons?.length) renderMallVouchers(product.coupons);
+  else loadMallVouchers(product.id);
+}
+
+function ensureProductGuide(product) {
+  let panel = document.querySelector("#productAiGuide");
+  if (!panel) {
+    document.querySelector("#productDialogStock").insertAdjacentHTML("afterend", `
+      <section class="ai-inline-card product-ai-guide" id="productAiGuide">
+        <strong>购买建议</strong>
+        <input id="productAiQuestion" placeholder="比如：这个适合送女朋友吗？">
+        <p id="productAiAnswer">可以直接问这件商品适不适合你的场景。</p>
+      </section>
+    `);
+    document.querySelector("#productAiQuestion").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        askProductGuide();
+      }
+    });
+  }
+  document.querySelector("#productAiQuestion").value = "";
+  document.querySelector("#productAiAnswer").textContent = product.merchant
+    ? `来自 ${product.merchant.name || "商家"}，可结合送礼、自用、预算来问。`
+    : "可以直接问这件商品适不适合你的场景。";
+}
+
+async function askProductGuide() {
+  const input = document.querySelector("#productAiQuestion");
+  const answer = document.querySelector("#productAiAnswer");
+  const question = input?.value?.trim();
+  if (!question || !state.currentProduct) return;
+  answer.textContent = "正在结合商品、评价和优惠信息判断...";
+  try {
+    const data = await aiFlow("/ai/flow/shopping-guide", {
+      productId: state.currentProduct.id,
+      query: question,
+      content: `${state.currentProduct.title} ${state.currentProduct.subTitle}`
+    });
+    answer.textContent = data.answer || "暂时没有生成有效建议。";
+  } catch {
+    answer.textContent = "导购建议暂时不可用，可以先看价格、库存和评价。";
+  }
 }
 
 async function loadMallVouchers(productId) {
@@ -2074,6 +2197,10 @@ function renderOrders(orders) {
         <strong>${escapeHtml(order.productTitle)}</strong>
         <span>订单号 ${order.id}</span>
         <small>¥${formatMoney(order.totalAmount)} · ${mallOrderStatus(order.status)}</small>
+        <div class="order-ai-service">
+          <input data-order-ai-input="${order.id}" placeholder="问订单、退款、物流问题">
+          <p data-order-ai-answer="${order.id}"></p>
+        </div>
       </div>
       ${Number(order.status) === 1 ? `
         <div class="cart-actions">
@@ -2085,6 +2212,29 @@ function renderOrders(orders) {
   els.cartList.querySelectorAll("[data-order-pay]").forEach(button => {
     button.addEventListener("click", () => payOrderFromList(button.dataset.orderPay));
   });
+  els.cartList.querySelectorAll("[data-order-ai-input]").forEach(input => {
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        askOrderService(input.dataset.orderAiInput, input.value);
+      }
+    });
+  });
+}
+
+async function askOrderService(orderId, question) {
+  const answer = document.querySelector(`[data-order-ai-answer="${orderId}"]`);
+  if (!question?.trim() || !answer) return;
+  answer.textContent = "正在查询订单并生成客服回复...";
+  try {
+    const data = await aiFlow("/ai/flow/customer-service", {
+      orderId: Number(orderId),
+      query: question
+    });
+    answer.textContent = data.answer || "暂时没有生成有效回复。";
+  } catch {
+    answer.textContent = "客服助手暂时不可用，可以稍后再试。";
+  }
 }
 
 async function payOrderFromList(orderId) {
@@ -2229,6 +2379,7 @@ function renderMerchantDashboard() {
   `;
   document.querySelector("#merchantProductForm").addEventListener("submit", submitMerchantProduct);
   document.querySelector("#merchantVoucherForm").addEventListener("submit", submitMerchantVoucher);
+  bindMerchantAssistant();
   els.merchantPanel.querySelectorAll("[data-product-toggle]").forEach(button => {
     button.addEventListener("click", () => toggleMerchantProduct(button.dataset.productToggle, button.dataset.nextStatus));
   });
@@ -2254,6 +2405,43 @@ function renderMerchantProducts() {
       </button>
     </article>
   `).join("");
+}
+
+function bindMerchantAssistant() {
+  const form = document.querySelector("#merchantProductForm");
+  if (!form) return;
+  let timer;
+  const trigger = () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => loadMerchantCopy(form), 1000);
+  };
+  form.elements.title?.addEventListener("input", trigger);
+  form.elements.subTitle?.addEventListener("input", trigger);
+}
+
+async function loadMerchantCopy(form) {
+  const title = String(form.elements.title?.value || "").trim();
+  const subTitle = String(form.elements.subTitle?.value || "").trim();
+  if (title.length + subTitle.length < 8) return;
+  let panel = document.querySelector("#merchantAiCopy");
+  if (!panel) {
+    form.querySelector(".publish-button").insertAdjacentHTML("beforebegin", `
+      <section class="ai-inline-card merchant-ai-copy" id="merchantAiCopy">
+        <strong>商家文案建议</strong>
+        <p>正在生成标题、卖点和优惠券文案...</p>
+      </section>
+    `);
+    panel = document.querySelector("#merchantAiCopy");
+  }
+  try {
+    const data = await aiFlow("/ai/flow/merchant-copy", {
+      content: `${title}\n${subTitle}`,
+      scenario: "商品发布"
+    });
+    panel.innerHTML = `<strong>商家文案建议</strong><p>${escapeHtml(data.answer || "暂时没有建议。")}</p>`;
+  } catch {
+    panel.innerHTML = `<strong>商家文案建议</strong><p>商家文案建议暂时不可用。</p>`;
+  }
 }
 
 function renderMerchantOrders() {
@@ -2348,7 +2536,18 @@ async function shipMerchantOrder(orderId) {
 }
 
 async function loadSmartRecommendation(question) {
-  // smart-card removed from UI; keep function for potential future use
+  state.aiSearchInsight = "";
+  if (state.mode !== "search") return;
+  renderUnifiedSearch();
+  try {
+    const data = await aiFlow("/ai/flow/search", { query: question, scenario: state.searchTab });
+    state.aiSearchInsight = data.answer || "";
+  } catch {
+    state.aiSearchInsight = "";
+  }
+  if (state.mode === "search" && els.search.value.trim() === String(question || "").trim()) {
+    renderUnifiedSearch();
+  }
 }
 
 async function analyzeCurrentNote(note) {
@@ -2367,6 +2566,35 @@ async function analyzeCurrentNote(note) {
     els.noteSmartText.textContent = data.answer || data.content || "暂时没有生成有效总结。";
   } catch {
     els.noteSmartText.textContent = "智能看点暂时不可用，正文内容仍可正常查看。";
+  }
+}
+
+async function analyzeCurrentNote(note) {
+  els.noteSmart.hidden = false;
+  els.noteSmartText.textContent = "正在总结这篇笔记的亮点、避雷点、价格和适合人群...";
+  try {
+    const data = await aiFlow("/ai/flow/note-summary", {
+      noteId: note.id,
+      title: note.title,
+      content: note.content
+    });
+    els.noteSmartText.textContent = data.answer || data.content || "暂时没有生成有效总结。";
+  } catch {
+    els.noteSmartText.textContent = "智能看点暂时不可用，正文内容仍可正常查看。";
+  }
+}
+
+async function loadRecommendReason(note) {
+  try {
+    const data = await aiFlow("/ai/flow/recommend-reason", {
+      noteId: note.id,
+      query: state.query || state.feed || "发现页"
+    });
+    if (data.answer && state.currentNote?.id === note.id) {
+      els.noteSmartText.textContent = `${els.noteSmartText.textContent}\n\n推荐原因：${data.answer}`;
+    }
+  } catch {
+    // 推荐解释失败不影响详情阅读。
   }
 }
 
@@ -2493,6 +2721,56 @@ function renderComposerDraftState(message = "") {
   }
 }
 
+function scheduleComposerAssistant() {
+  window.clearTimeout(state.aiComposerTimer);
+  const form = els.composerForm.elements;
+  const title = String(form.title?.value || "").trim();
+  const content = String(form.content?.value || "").trim();
+  if (title.length + content.length < 12) return;
+  state.aiComposerTimer = window.setTimeout(() => loadComposerSuggestions(), 1200);
+}
+
+function ensureComposerAiPanel() {
+  let panel = document.querySelector("#composerAiSuggestions");
+  if (!panel) {
+    els.composerForm.querySelector("[name='content']").closest("label").insertAdjacentHTML("afterend", `
+      <section class="ai-inline-card composer-ai" id="composerAiSuggestions">
+        <strong>创作建议</strong>
+        <p>写一点内容后，会自动给你标题、标签和正文优化建议。</p>
+      </section>
+    `);
+    panel = document.querySelector("#composerAiSuggestions");
+  }
+  return panel;
+}
+
+async function loadComposerSuggestions() {
+  const form = els.composerForm.elements;
+  const title = String(form.title?.value || "").trim();
+  const content = String(form.content?.value || "").trim();
+  const panel = ensureComposerAiPanel();
+  panel.innerHTML = `<strong>创作建议</strong><p>正在根据当前草稿生成标题、标签和正文建议...</p>`;
+  try {
+    const data = await aiFlow("/ai/flow/compose", {
+      scenario: getComposerContentType(),
+      title,
+      content
+    });
+    const answer = data.answer || "";
+    panel.innerHTML = `
+      <strong>创作建议</strong>
+      <p>${escapeHtml(answer)}</p>
+      <button type="button" id="useComposerAiText">把建议补进正文</button>
+    `;
+    document.querySelector("#useComposerAiText").addEventListener("click", () => {
+      form.content.value = `${form.content.value.trim()}\n\n${answer}`.trim();
+      saveComposerDraft(true);
+    });
+  } catch {
+    panel.innerHTML = `<strong>创作建议</strong><p>创作建议暂时不可用，草稿仍会自动保存。</p>`;
+  }
+}
+
 function appendComposerImageUrls(urls) {
   if (!urls.length) return;
   const input = els.composerForm.elements.images;
@@ -2616,6 +2894,10 @@ async function submitComposer(event) {
     const shopId = isProductNote && form.get("shopId") ? Number(form.get("shopId")) : null;
     const productIds = parseProductIds(form.get("productIds"));
     const content = String(form.get("content") || "").trim();
+    if (!(await checkAiRisk(`${form.get("title") || ""}\n${content}`, "publish"))) {
+      saveComposerDraft(true);
+      return;
+    }
     if (isVideoLike && !videoUrl) {
       showStatus(contentType === "LIVE" ? "直播预告需要填写直播地址或上传预告视频。" : "视频内容需要上传视频或填写视频地址。");
       saveComposerDraft(true);
@@ -2820,14 +3102,14 @@ function renderUnifiedSearch() {
 function renderUnifiedSearchResults() {
   const list = state.searchResults[state.searchTab] || [];
   if (!list.length) {
-    els.unifiedSearchResults.innerHTML = `<p class="empty-text">这个分类暂时没有匹配结果。</p>`;
+    els.unifiedSearchResults.innerHTML = `${renderAiSearchInsight()}<p class="empty-text">这个分类暂时没有匹配结果。</p>`;
     return;
   }
   if (state.searchTab === "notes" || state.searchTab === "videos") {
     const grid = document.createElement("div");
     grid.className = "masonry-feed unified-note-results";
     list.forEach(note => grid.appendChild(createNoteCard(note)));
-    els.unifiedSearchResults.innerHTML = "";
+    els.unifiedSearchResults.innerHTML = renderAiSearchInsight();
     els.unifiedSearchResults.appendChild(grid);
     return;
   }
@@ -2844,6 +3126,7 @@ function renderUnifiedSearchResults() {
 
 function renderUnifiedProducts(products) {
   els.unifiedSearchResults.innerHTML = `
+    ${renderAiSearchInsight()}
     <div class="unified-product-grid">
       ${products.map(product => `
         <article class="product-card">
@@ -2871,6 +3154,7 @@ function renderUnifiedProducts(products) {
 
 function renderUnifiedShops(shops) {
   els.unifiedSearchResults.innerHTML = `
+    ${renderAiSearchInsight()}
     <div class="unified-list">
       ${shops.map(shop => `
         <article class="unified-row">
@@ -2893,6 +3177,7 @@ function renderUnifiedShops(shops) {
 
 function renderUnifiedTopics(topics) {
   els.unifiedSearchResults.innerHTML = `
+    ${renderAiSearchInsight()}
     <div class="unified-topic-grid">
       ${topics.map(topic => `
         <button type="button" data-unified-topic="${escapeHtml(topic.keyword)}">
@@ -2904,6 +3189,12 @@ function renderUnifiedTopics(topics) {
   els.unifiedSearchResults.querySelectorAll("[data-unified-topic]").forEach(button => {
     button.addEventListener("click", () => enterUnifiedSearch(button.dataset.unifiedTopic, "notes"));
   });
+}
+
+function renderAiSearchInsight() {
+  return state.aiSearchInsight
+    ? `<section class="ai-inline-card"><strong>搜索理解</strong><p>${escapeHtml(state.aiSearchInsight)}</p></section>`
+    : "";
 }
 
 // ------------------------------
@@ -3061,7 +3352,10 @@ els.contentTypeInputs.forEach(input => {
 applyComposerType();
 renderComposerDraftState();
 
-els.composerForm.addEventListener("input", () => saveComposerDraft());
+els.composerForm.addEventListener("input", () => {
+  saveComposerDraft();
+  scheduleComposerAssistant();
+});
 els.composerForm.addEventListener("change", () => saveComposerDraft());
 els.clearComposerDraft?.addEventListener("click", () => {
   clearComposerDraft(true);
@@ -3184,6 +3478,7 @@ document.querySelector("#sendCodeButton").addEventListener("click", sendCode);
 els.composerForm.addEventListener("submit", submitComposer);
 els.loginForm.addEventListener("submit", submitLogin);
 els.commentForm.addEventListener("submit", submitComment);
+els.commentInput.addEventListener("focus", loadCommentSuggestions);
 document.querySelectorAll("[data-comment-sort]").forEach(button => {
   button.addEventListener("click", () => {
     state.commentSort = button.dataset.commentSort || "hot";

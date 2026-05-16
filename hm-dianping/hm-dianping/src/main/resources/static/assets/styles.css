@@ -1029,6 +1029,74 @@ img {
 }
 
 /* Topic filters and AI recommendation card */
+.ai-inline-card {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  border: 1px solid rgba(31, 41, 55, .1);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  padding: 12px;
+}
+
+.ai-inline-card strong {
+  font-size: 14px;
+}
+
+.ai-inline-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ai-inline-card input {
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.ai-inline-card button,
+.ai-suggestion-row button {
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: #fff;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ai-suggestion-row span,
+.order-ai-service p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.order-ai-service {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.order-ai-service input {
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+}
 .topic-strip {
   display: flex;
   justify-content: center;

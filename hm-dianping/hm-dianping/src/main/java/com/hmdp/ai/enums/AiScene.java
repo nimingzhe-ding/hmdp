@@ -6,7 +6,8 @@ import java.util.Arrays;
 
 public enum AiScene {
     CUSTOMER_SERVICE("customer-service", "智能客服"),
-    QUERY("query", "智能查询问答");
+    QUERY("query", "智能查询问答"),
+    FLOW("flow", "流程型智能助手");
 
     private final String code;
     private final String description;

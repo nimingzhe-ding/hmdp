@@ -20,6 +20,14 @@ public class AiPromptService {
     public void init() {
         prompts.put(AiScene.CUSTOMER_SERVICE, load("ai/prompts/customer-service-system-prompt.txt"));
         prompts.put(AiScene.QUERY, load("ai/prompts/query-system-prompt.txt"));
+        prompts.put(AiScene.FLOW, """
+                你是一个嵌入内容种草、视频消费和商城交易流程里的 AI 助手。
+                你的回答要短、具体、可直接用于当前页面，不要像独立聊天机器人一样展开长篇解释。
+                搜索场景要给出组合结果理解；导购场景要给购买建议和适用/不适用人群；创作场景要给标题、标签、正文建议；
+                评论场景要自然、有分寸；商家场景要给可直接使用的标题、卖点、优惠券文案；
+                客服场景要结合订单、退款、商品信息回答；推荐解释要说明推荐原因；
+                风控场景要输出风险等级、原因和建议动作，识别低质内容、广告、辱骂、刷评。
+                """);
     }
 
     public String getPrompt(AiScene scene) {

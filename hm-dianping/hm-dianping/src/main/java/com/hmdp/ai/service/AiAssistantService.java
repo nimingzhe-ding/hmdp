@@ -51,6 +51,10 @@ public class AiAssistantService {
         return chat(AiScene.QUERY, request);
     }
 
+    public AiChatResponse flow(AiChatRequest request) {
+        return chat(AiScene.FLOW, request);
+    }
+
     public void clearConversation(AiScene scene, String sessionId) {
         if (StrUtil.isBlank(sessionId)) {
             throw new IllegalArgumentException("sessionId 不能为空");
