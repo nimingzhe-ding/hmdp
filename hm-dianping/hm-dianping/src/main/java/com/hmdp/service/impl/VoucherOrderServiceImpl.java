@@ -234,10 +234,23 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             }
             stringRedisTemplate.opsForStream().createGroup(ORDER_STREAM_KEY, ReadOffset.latest(), ORDER_GROUP);
         } catch (RedisSystemException e) {
-            if (e.getMessage() == null || !e.getMessage().contains("BUSYGROUP")) {
+            if (!isConsumerGroupAlreadyExists(e)) {
                 throw e;
             }
+            log.debug("Redis Stream 消费者组已存在, stream={}, group={}", ORDER_STREAM_KEY, ORDER_GROUP);
         }
+    }
+
+    private boolean isConsumerGroupAlreadyExists(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.contains("BUSYGROUP")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private void initDlqStream() {
