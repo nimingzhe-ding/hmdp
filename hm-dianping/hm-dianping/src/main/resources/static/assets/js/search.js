@@ -43,7 +43,7 @@ async function enterUnifiedSearch(query, preferredTab = "notes", loadAi = true) 
 async function searchUnified(keyword) {
   try {
     const params = new URLSearchParams({ current: "1", query: keyword });
-    const data = await request(`/content/search?${params.toString()}`);
+    const data = await request(`/notes/search?${params.toString()}`);
     return {
       notes: Array.isArray(data?.notes) ? data.notes.map(normalizeNote) : [],
       videos: Array.isArray(data?.videos) ? data.videos.map(normalizeNote) : [],
@@ -70,7 +70,7 @@ async function searchUnified(keyword) {
 async function searchNotes(keyword) {
   try {
     const params = new URLSearchParams({ current: "1", channel: "hot", query: keyword });
-    const data = await request(`/content/feed?${params.toString()}`);
+    const data = await request(`/notes/feed?${params.toString()}`);
     const notes = Array.isArray(data?.list) ? data.list.map(normalizeNote) : [];
     return notes;
   } catch {
@@ -287,7 +287,7 @@ function renderSuggestions(value = "") {
 
 async function loadTrends() {
   try {
-    const data = await request("/content/trends");
+    const data = await request("/notes/trends");
     state.trends = Array.isArray(data) && data.length
       ? data
       : fallbackSuggestions.map((keyword, index) => ({ keyword, heat: 80 - index * 5 }));

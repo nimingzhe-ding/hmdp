@@ -6,7 +6,7 @@
 async function loadComments(blogId) {
   els.commentList.innerHTML = `<p class="empty-text">正在加载评论...</p>`;
   try {
-    const result = await request(`/blog-comments/of/blog?blogId=${blogId}&sort=${state.commentSort}`, { raw: true });
+    const result = await request(`/notes/comments/of/blog?blogId=${blogId}&sort=${state.commentSort}`, { raw: true });
     const comments = Array.isArray(result.data) ? result.data : [];
     updateCommentCount(result.total ?? comments.length);
     renderComments(comments);
@@ -100,7 +100,7 @@ function startReply(button) {
 async function likeComment(commentId) {
   if (!requireLogin()) return;
   try {
-    await request(`/blog-comments/like/${commentId}`, { method: "PUT" });
+    await request(`/notes/comments/like/${commentId}`, { method: "PUT" });
     loadComments(state.currentNote.id);
   } catch {
     showStatus("评论点赞失败，请稍后再试。");
@@ -110,7 +110,7 @@ async function likeComment(commentId) {
 async function deleteComment(commentId) {
   if (!state.currentNote || !requireLogin()) return;
   try {
-    const data = await request(`/blog-comments/${commentId}`, { method: "DELETE" });
+    const data = await request(`/notes/comments/${commentId}`, { method: "DELETE" });
     updateCommentCount(data?.comments);
     loadComments(state.currentNote.id);
   } catch {
@@ -121,7 +121,7 @@ async function deleteComment(commentId) {
 async function reportComment(commentId) {
   if (!state.currentNote || !requireLogin()) return;
   try {
-    const data = await request(`/blog-comments/report/${commentId}`, { method: "PUT" });
+    const data = await request(`/notes/comments/report/${commentId}`, { method: "PUT" });
     updateCommentCount(data?.comments);
     loadComments(state.currentNote.id);
     showStatus("已提交举报。");
@@ -143,7 +143,7 @@ async function submitComment(event) {
       parentId: state.replyTarget?.parentId || 0,
       answerId: state.replyTarget?.answerId || 0
     };
-    const data = await request("/blog-comments", {
+    const data = await request("/notes/comments", {
       method: "POST",
       body: JSON.stringify(payload)
     });

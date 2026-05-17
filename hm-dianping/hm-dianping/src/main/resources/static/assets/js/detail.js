@@ -12,7 +12,7 @@
 
   async function openDrawer(note) {
     try {
-      const freshNote = await request(`/content/note/${note.id}`);
+      const freshNote = await request(`/notes/${note.id}`);
       note = normalizeNote(freshNote);
     } catch {
       // 详情聚合接口不可用时继续展示卡片已有数据。
@@ -273,7 +273,7 @@
   async function likeNote(note) {
     if (!requireLogin()) return;
     try {
-      await request(`/blog/like/${note.id}`, { method: "PUT" });
+      await request(`/notes/${note.id}/like`, { method: "PUT" });
       trackEvent("like", { blogId: note.id, scene: "detail" });
       note.liked += note.isLike ? -1 : 1;
       note.isLike = !note.isLike;
@@ -287,7 +287,7 @@
     if (!requireLogin()) return;
     const id = String(note.id);
     const next = !state.collected.has(id);
-    request(`/blog-collect/${note.id}/${next}`, { method: "PUT" })
+    request(`/notes/${note.id}/collect/${next}`, { method: "PUT" })
       .then(() => {
         if (next) state.collected.add(id);
         else state.collected.delete(id);
@@ -303,7 +303,7 @@
   async function loadCollectState(note) {
     if (!token()) return;
     try {
-      const collected = await request(`/blog-collect/or/not/${note.id}`);
+      const collected = await request(`/notes/${note.id}/collect`);
       const id = String(note.id);
       if (collected) state.collected.add(id);
       else state.collected.delete(id);

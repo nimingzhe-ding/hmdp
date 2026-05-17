@@ -237,7 +237,7 @@
     for (var i = 0; i < files.length; i++) {
       var formData = new FormData();
       formData.append("file", files[i]);
-      var name = await request("/upload/blog", { method: "POST", body: formData });
+      var name = await request("/upload/note", { method: "POST", body: formData });
       uploaded.push("/imgs" + name);
     }
     return uploaded;
@@ -315,7 +315,7 @@
         content: mergeTopics(content, form.get("topics"))
       };
       var editingId = state.editingNoteId;
-      await request(editingId ? "/blog/" + editingId : "/blog", {
+      await request(editingId ? "/notes/" + editingId : "/notes", {
         method: editingId ? "PUT" : "POST",
         body: JSON.stringify(payload)
       });
@@ -373,7 +373,7 @@
     var confirmed = window.confirm("确定删除这篇笔记吗？删除后不可恢复。");
     if (!confirmed) return;
     try {
-      await request("/blog/" + note.id, { method: "DELETE" });
+      await request("/notes/" + note.id, { method: "DELETE" });
       state.notes = state.notes.filter(function(item) { return String(item.id) !== String(note.id); });
       state.videoNotes = state.videoNotes.filter(function(item) { return String(item.id) !== String(note.id); });
       document.querySelectorAll(".note-card").forEach(function(card) {

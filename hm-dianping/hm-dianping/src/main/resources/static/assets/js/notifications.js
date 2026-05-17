@@ -138,7 +138,7 @@ window.navigateFromNotification = navigateFromNotification;
 async function loadProfileStats() {
   if (!token()) return;
   try {
-    const profile = await request("/content/profile");
+    const profile = await request("/profiles/me");
     state.currentProfile = profile;
   } catch {
     // 统计接口异常时保留当前用户基础信息，不影响浏览主流程。
@@ -158,7 +158,7 @@ async function openMyProfile(tab = "works") {
   els.profileHomeResults.innerHTML = `<p class="empty-text">正在加载主页...</p>`;
   document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
   try {
-    const profile = await request("/content/profile");
+    const profile = await request("/profiles/me");
     state.currentProfile = profile;
     renderProfileHome(profile);
     await loadProfileTab(tab);
@@ -209,14 +209,14 @@ async function loadProfileTab(tab) {
   els.profileHomeResults.innerHTML = `<p class="empty-text">正在加载...</p>`;
   if (["works", "collections", "liked"].includes(tab)) {
     const path = tab === "works"
-      ? `/content/user/${userId}`
-      : `/content/user/${userId}/${tab}`;
+      ? `/notes/user/${userId}`
+      : `/notes/user/${userId}/${tab}`;
     const data = await request(`${path}?current=1`);
     const notes = (Array.isArray(data?.list) ? data.list : []).map(normalizeNote);
     renderProfileNotes(notes);
     return;
   }
-  const users = await request(`/content/user/${userId}/${tab}?current=1`);
+  const users = await request(`/notes/user/${userId}/${tab}?current=1`);
   renderProfileUsers(Array.isArray(users) ? users : []);
 }
 window.loadProfileTab = loadProfileTab;
@@ -269,7 +269,7 @@ async function submitProfileEdit(event) {
   event.preventDefault();
   const form = new FormData(els.profileEditForm);
   try {
-    const profile = await request("/content/profile", {
+    const profile = await request("/profiles/me", {
       method: "PUT",
       body: JSON.stringify({
         nickName: form.get("nickName"),

@@ -1267,7 +1267,7 @@ public class ContentServiceImpl implements IContentService {
             String key = RedisConstants.SHOP_GEO_ALL_KEY;
             var results = stringRedisTemplate.opsForGeo().search(
                     key,
-                    org.springframework.data.geo.GeoReference.fromCoordinate(x, y),
+                    org.springframework.data.redis.domain.geo.GeoReference.fromCoordinate(x, y),
                     new org.springframework.data.geo.Distance(radiusMeters),
                     org.springframework.data.redis.connection.RedisGeoCommands.GeoSearchCommandArgs
                             .newGeoSearchArgs().includeDistance().limit(50));

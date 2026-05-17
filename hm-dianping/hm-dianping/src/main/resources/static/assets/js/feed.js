@@ -104,14 +104,14 @@ window.loadNotes = loadNotes;
 function buildContentUrl() {
   const params = new URLSearchParams({ current: String(state.page) });
   if (state.mode === "mine") {
-    return `/content/mine?${params.toString()}`;
+    return `/notes/mine?${params.toString()}`;
   }
   if (state.mode === "collections") {
-    return `/content/collections?${params.toString()}`;
+    return `/notes/collections?${params.toString()}`;
   }
   params.set("channel", state.feed);
   if (state.query) params.set("query", state.query);
-  return `/content/feed?${params.toString()}`;
+  return `/notes/feed?${params.toString()}`;
 }
 window.buildContentUrl = buildContentUrl;
 

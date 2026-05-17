@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
  * 评论控制器：负责笔记详情页评论流、二级回复、删除、举报和排序。
  */
 @RestController
-@RequestMapping("/blog-comments")
+@RequestMapping({"/blog-comments", "/notes/comments"})
 public class BlogCommentsController {
 
     @Resource

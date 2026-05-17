@@ -8,10 +8,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 接口权限注解，标注在 Controller 方法上。
+ * 接口权限注解，可标注在 Controller 类或方法上。
  * 由 PermissionAspect 拦截校验。
  */
-@Target(ElementType.METHOD)
+@Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RequireRole {
     /**

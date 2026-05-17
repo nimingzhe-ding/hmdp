@@ -77,7 +77,13 @@ public class CacheClient {
 
         String lockKey = RedisConstants.LOCK_SHOP_KEY + id;
         RLock lock = redissonClient.getLock(lockKey);
-        boolean locked = lock.tryLock(0, 30, TimeUnit.SECONDS);
+        boolean locked;
+        try {
+            locked = lock.tryLock(0, 30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return value;
+        }
         if (!locked) {
             return value;
         }

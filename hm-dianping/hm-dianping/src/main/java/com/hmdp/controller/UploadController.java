@@ -34,7 +34,7 @@ public class UploadController {
     @Value("${hmdp.upload.image-dir}")
     private String imageUploadDir;
 
-    @PostMapping("blog")
+    @PostMapping({"blog", "note"})
     public Result uploadImage(@RequestParam("file") MultipartFile image) {
         if (image == null || image.isEmpty()) {
             throw new BusinessException(ErrorCode.FILE_EMPTY);
