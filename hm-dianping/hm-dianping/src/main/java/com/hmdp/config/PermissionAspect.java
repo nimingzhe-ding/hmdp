@@ -37,7 +37,8 @@ public class PermissionAspect {
             throw new UnauthorizedException();
         }
 
-        UserRole currentRole = UserRole.of(user.getRole());
+        Integer roleCode = user.getRole();
+        UserRole currentRole = UserRole.of(roleCode == null ? UserRole.USER.getCode() : roleCode);
         if (!currentRole.isAtLeast(required)) {
             throw new BusinessException(ErrorCode.NO_PERMISSION, "需要" + required.getDesc() + "权限");
         }

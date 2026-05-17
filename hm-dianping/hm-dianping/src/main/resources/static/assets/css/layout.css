@@ -573,7 +573,7 @@
 
 /* Discover strip: lifestyle category cards */
 .discover-strip {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 20px;

@@ -159,6 +159,7 @@ async function submitComment(event) {
 }
 
 async function loadCommentSuggestions() {
+  if (!token()) return;
   if (!state.currentNote || state.aiCommentLoadedFor === state.currentNote.id) return;
   state.aiCommentLoadedFor = state.currentNote.id;
   const host = ensureCommentAiPanel();

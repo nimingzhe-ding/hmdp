@@ -26,6 +26,7 @@ window.refreshNotificationBadge = refreshNotificationBadge;
 
 async function openNotificationDialog() {
   if (!requireLogin()) return;
+  setMobileTabActive("messages");
   els.notificationList.innerHTML = `<p class="empty-text">正在加载消息...</p>`;
   els.notificationDialog.showModal();
   const unreadOnly = state.notificationFilter === "unread";
@@ -149,6 +150,7 @@ window.loadProfileStats = loadProfileStats;
 async function openMyProfile(tab = "works") {
   if (!requireLogin()) return;
   showContentArea();
+  setMobileTabActive("profile");
   hideUnifiedSearch();
   state.mode = "profile";
   state.profileTab = tab;

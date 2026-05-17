@@ -26,15 +26,19 @@
   els.search.addEventListener("input", function() {
     renderSuggestions(els.search.value);
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(function() {
-      var keyword = els.search.value.trim();
-      if (keyword) enterUnifiedSearch(keyword, state.searchTab || "notes", false);
-      else {
-        state.mode = "feed";
-        state.query = "";
-        resetAndLoad();
-      }
-    }, 280);
+  });
+  els.search.addEventListener("keydown", function(event) {
+    if (event.key === "Escape") {
+      els.search.value = "";
+      els.suggestPopover.classList.remove("is-open");
+      els.trendList.hidden = true;
+    }
+  });
+  document.addEventListener("click", function(event) {
+    if (!event.target.closest(".search-box")) {
+      els.suggestPopover.classList.remove("is-open");
+      els.trendList.hidden = true;
+    }
   });
 
   els.imageFiles.addEventListener("change", function() {
@@ -99,18 +103,30 @@
   document.querySelector("#mallTab").addEventListener("click", switchMall);
   document.querySelector("#mobileMall").addEventListener("click", switchMall);
   document.querySelector("#videoTab").addEventListener("click", switchVideo);
-  // Mobile profile button: switch to feed (home)
   var mobileProfile = document.querySelector("#mobileProfile");
-  if (mobileProfile) mobileProfile.addEventListener("click", function() { switchFeed("hot"); });
+  if (mobileProfile) mobileProfile.addEventListener("click", function() { openMyProfile(); });
   document.querySelector("#openCart").addEventListener("click", openCartDialog);
   document.querySelector("#openOrders").addEventListener("click", openOrdersDialog);
   document.querySelector("#openMerchantCenter").addEventListener("click", openMerchantCenter);
   document.querySelector("#closeProductDialog").addEventListener("click", function() { els.productDialog.close(); });
   document.querySelector("#closeCheckoutDialog").addEventListener("click", function() { els.checkoutDialog.close(); });
   document.querySelector("#closeCartDialog").addEventListener("click", function() { els.cartDialog.close(); });
-  document.querySelector("#openNotifications").addEventListener("click", openNotificationDialog);
+  document.querySelectorAll("#openNotifications, #mobileNotifications").forEach(function(button) {
+    button.addEventListener("click", function() {
+      setMobileTabActive("messages");
+      openNotificationDialog();
+    });
+  });
   document.querySelector("#closeNotificationDialog").addEventListener("click", function() { els.notificationDialog.close(); });
   document.querySelector("#markNotificationsRead").addEventListener("click", markNotificationsRead);
+  document.querySelector("#openCustomerService").addEventListener("click", function() { openCustomerServiceDialog(); });
+  document.querySelector("#closeCustomerService").addEventListener("click", function() { els.customerServiceDialog.close(); });
+  els.customerServiceForm.addEventListener("submit", submitCustomerService);
+  document.querySelectorAll("[data-cs-question]").forEach(function(button) {
+    button.addEventListener("click", function() {
+      askCustomerServiceQuestion(button.dataset.csQuestion);
+    });
+  });
   els.notificationList.addEventListener("click", function(e) {
     var actionBtn = e.target.closest("[data-action]");
     var item = e.target.closest(".notification-item");
@@ -196,6 +212,15 @@
   // ------------------------------
   // App initialization
   // ------------------------------
+  state.mode = "feed";
+  state.query = "";
+  els.search.value = "";
+  els.suggestPopover.classList.remove("is-open");
+  els.trendList.hidden = true;
+  els.unifiedSearch.hidden = true;
+  els.profileHome.hidden = true;
+  els.feed.hidden = false;
+  els.loading.hidden = false;
   initUser();
   refreshNotificationBadge();
   setInterval(refreshNotificationBadge, 60000);

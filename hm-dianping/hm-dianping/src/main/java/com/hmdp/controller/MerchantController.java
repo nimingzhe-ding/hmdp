@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/merchant")
-@RequireRole(UserRole.MERCHANT)
+@RequireRole(UserRole.USER)
 public class MerchantController {
 
     @Resource

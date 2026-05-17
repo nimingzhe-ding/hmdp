@@ -313,6 +313,107 @@
   display: block;
 }
 
+/* ── Smart Customer Service ── */
+
+.customer-service-fab {
+  position: fixed;
+  right: 22px;
+  bottom: 24px;
+  z-index: 45;
+  width: 54px;
+  height: 54px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 900;
+  box-shadow: 0 12px 32px rgba(255, 36, 66, .26);
+}
+
+.customer-service-dialog {
+  width: min(520px, calc(100% - 28px));
+}
+
+.customer-service-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.customer-service-messages {
+  display: grid;
+  gap: 10px;
+  max-height: min(440px, 58vh);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.cs-message {
+  display: grid;
+  gap: 5px;
+  max-width: 88%;
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.cs-message strong {
+  font-size: 12px;
+}
+
+.cs-message p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.cs-assistant {
+  justify-self: start;
+  background: var(--surface-soft);
+}
+
+.cs-user {
+  justify-self: end;
+  background: var(--accent);
+  color: #fff;
+}
+
+.customer-service-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.customer-service-quick button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: #fff;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.customer-service-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.customer-service-form input {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 0 14px;
+}
+
+@media (max-width: 760px) {
+  .customer-service-fab {
+    right: 16px;
+    bottom: 86px;
+  }
+}
+
 /* ── Composer & Login Dialogs ── */
 
 .composer-form,

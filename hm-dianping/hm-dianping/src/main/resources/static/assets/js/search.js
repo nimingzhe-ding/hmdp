@@ -6,6 +6,8 @@
 async function enterUnifiedSearch(query, preferredTab = "notes", loadAi = true) {
   const keyword = String(query || "").trim();
   if (!keyword) {
+    els.suggestPopover.classList.remove("is-open");
+    els.trendList.hidden = true;
     state.mode = "feed";
     resetAndLoad();
     return;
@@ -236,6 +238,7 @@ function renderAiSearchInsight() {
 }
 
 async function loadSmartRecommendation(question) {
+  if (!token()) return;
   state.aiSearchInsight = "";
   if (state.mode !== "search") return;
   renderUnifiedSearch();
@@ -272,9 +275,10 @@ async function analyzeCurrentNote(note) {
 function renderSuggestions(value = "") {
   const q = value.trim();
   const source = state.trends.length ? state.trends.map(item => item.keyword) : fallbackSuggestions;
-  const list = source.filter(item => !q || item.includes(q)).slice(0, 6);
+  const list = q ? source.filter(item => item.includes(q)).slice(0, 6) : [];
   els.suggestPopover.innerHTML = list.map(item => `<button type="button" data-suggestion="${item}">${item}</button>`).join("");
   els.suggestPopover.classList.toggle("is-open", list.length > 0 && document.activeElement === els.search);
+  els.trendList.hidden = true;
   els.suggestPopover.querySelectorAll("button").forEach(button => {
     button.addEventListener("click", () => {
       state.query = button.dataset.suggestion;
@@ -300,7 +304,7 @@ async function loadTrends() {
 function renderTrends() {
   if (!els.trendList) return;
   var hasTrends = state.trends && state.trends.length > 0;
-  els.trendList.hidden = !hasTrends;
+  els.trendList.hidden = true;
   if (!hasTrends) return;
   els.trendList.innerHTML = state.trends.slice(0, 6).map((item, index) => `
     <button type="button" data-trend="${escapeHtml(item.keyword)}">

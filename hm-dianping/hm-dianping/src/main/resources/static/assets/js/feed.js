@@ -73,7 +73,7 @@ async function loadNotes() {
     if (!notes.length && state.page === 1) {
       if (state.mode === "feed") {
         notes = fallbackNotes.map(normalizeNote);
-        showStatus("当前使用示例内容预览前端效果；后端接口和图片服务就绪后会自动显示真实笔记。");
+        hideStatus();
       } else {
         showStatus(state.mode === "mine" ? "你还没有发布笔记，可以先发布第一篇。" : "你还没有收藏笔记。");
       }
@@ -91,7 +91,7 @@ async function loadNotes() {
       const notes = fallbackNotes.map(normalizeNote);
       appendNotes(notes);
       state.notes = notes;
-      showStatus("没有连上完整后端数据，已切换到示例内容预览。");
+      hideStatus();
     }
     state.hasMore = false;
   } finally {
@@ -196,10 +196,11 @@ window.hideProfileHome = hideProfileHome;
 // ------------------------------
 function switchFeed(feed) {
   showContentArea();
+  setMobileTabActive("home");
   state.mode = "feed";
   state.feed = feed;
   document.querySelectorAll("[data-feed]").forEach(item => {
-    item.classList.toggle("is-active", item.dataset.feed === feed);
+    item.classList.toggle("is-active", item.dataset.feed === feed || (item.dataset.mobileTab === "home" && item.closest(".mobile-tabbar")));
   });
   resetAndLoad();
 }

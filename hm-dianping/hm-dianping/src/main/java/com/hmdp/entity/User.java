@@ -55,7 +55,7 @@ public class User implements Serializable {
     /**
      * 用户角色：0游客 1用户 2商家 3管理员
      */
-    private Integer role = 0;
+    private Integer role = 1;
 
     /**
      * 创建时间

@@ -108,6 +108,10 @@ window.els = {
   notificationDialog: document.querySelector("#notificationDialog"),
   notificationList: document.querySelector("#notificationList"),
   notificationBadge: document.querySelector("#notificationBadge"),
+  customerServiceDialog: document.querySelector("#customerServiceDialog"),
+  customerServiceMessages: document.querySelector("#customerServiceMessages"),
+  customerServiceForm: document.querySelector("#customerServiceForm"),
+  customerServiceInput: document.querySelector("#customerServiceInput"),
   merchantDialog: document.querySelector("#merchantDialog"),
   voucherList: document.querySelector("#voucherList"),
   mallVoucherList: document.querySelector("#mallVoucherList"),
@@ -133,6 +137,13 @@ window.els = {
   trendList: document.querySelector("#trendList"),
   toastContainer: document.querySelector("#toastContainer")
 };
+
+function setMobileTabActive(tab) {
+  document.querySelectorAll(".mobile-tabbar [data-mobile-tab]").forEach(button => {
+    button.classList.toggle("is-active", Boolean(tab) && button.dataset.mobileTab === tab);
+  });
+}
+window.setMobileTabActive = setMobileTabActive;
 
 // ------------------------------
 // Toast 通知
@@ -266,6 +277,22 @@ window.fallbackSuggestions = fallbackSuggestions;
 // ------------------------------
 // Request and formatting helpers
 // ------------------------------
+const API_ORIGIN = (() => {
+  const configured = localStorage.getItem("hmdp_api_origin");
+  if (configured) return configured.replace(/\/$/, "");
+  if (location.port === "8082" || location.port === "5500" || location.port === "5173") {
+    return `${location.protocol}//${location.hostname}:8081`;
+  }
+  return "";
+})();
+window.API_ORIGIN = API_ORIGIN;
+
+function apiUrl(url) {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return `${API_ORIGIN}${url.startsWith("/") ? url : `/${url}`}`;
+}
+window.apiUrl = apiUrl;
+
 function token() {
   return localStorage.getItem("hmdp_token") || "";
 }
@@ -277,7 +304,7 @@ async function request(url, options = {}) {
   if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(apiUrl(url), { ...options, headers });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const result = await response.json();
   if (result.success === false) throw new Error(result.errorMsg || "请求失败");

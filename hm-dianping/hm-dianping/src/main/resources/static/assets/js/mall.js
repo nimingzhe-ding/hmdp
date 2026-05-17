@@ -9,6 +9,7 @@
 function setMallActive(active) {
   document.querySelectorAll("#mallTab, #mobileMall").forEach(item => item.classList.toggle("is-active", active));
   if (active) {
+    setMobileTabActive("mall");
     document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
   }
 }
@@ -16,6 +17,7 @@ function setMallActive(active) {
 function setVideoActive(active) {
   document.querySelectorAll("#videoTab, #mobileVideo").forEach(item => item.classList.toggle("is-active", active));
   if (active) {
+    setMobileTabActive(null);
     document.querySelectorAll("[data-feed]").forEach(item => item.classList.remove("is-active"));
   }
 }
@@ -97,37 +99,6 @@ function renderProducts(products) {
   });
 }
 
-// NOTE: This is the FIRST version of openProduct (line 1915).
-// It is OVERRIDDEN by the second version at line 3315 below.
-// Keeping it here for completeness; JS will use the later definition.
-async function openProduct(productId) {
-  let product = state.mallProducts.find(item => String(item.id) === String(productId));
-  try {
-    const detail = await request(`/mall/products/${productId}`);
-    product = normalizeProduct(detail?.product || detail);
-    product.skus = Array.isArray(detail?.skus) ? detail.skus : [];
-    product.reviews = Array.isArray(detail?.reviews) ? detail.reviews : [];
-    product.coupons = Array.isArray(detail?.coupons) ? detail.coupons : [];
-    product.merchant = detail?.merchant || null;
-  } catch {
-    // 列表数据足够支撑第一版详情预览；详情接口异常时继续使用当前卡片数据。
-  }
-  if (!product) return;
-  state.currentProduct = product;
-  state.selectedVoucherId = null;
-  state.productVouchers = [];
-  document.querySelector("#productDialogTitle").textContent = product.title;
-  document.querySelector("#productDialogImage").src = normalizeImage(product.image);
-  document.querySelector("#productDialogSub").textContent = product.subTitle;
-  document.querySelector("#productDialogPrice").textContent = `¥${formatMoney(product.price)}`;
-  document.querySelector("#productDialogStock").textContent = `库存 ${product.stock} · 已售 ${product.sold}`;
-  ensureProductGuide(product);
-  renderMallVouchers([]);
-  els.productDialog.showModal();
-  if (product.coupons?.length) renderMallVouchers(product.coupons);
-  else loadMallVouchers(product.id);
-}
-
 function ensureProductGuide(product) {
   let panel = document.querySelector("#productAiGuide");
   if (!panel) {
@@ -179,40 +150,6 @@ async function loadMallVouchers(productId) {
   renderMallVouchers(state.productVouchers);
 }
 
-// NOTE: This is the FIRST version of renderMallVouchers (line 1994).
-// It is OVERRIDDEN by the second version at line 3464 below.
-function renderMallVouchers(vouchers) {
-  if (!els.mallVoucherList) return;
-  if (!vouchers.length) {
-    els.mallVoucherList.innerHTML = `<p class="empty-text">暂无可用商城券。</p>`;
-    return;
-  }
-  els.mallVoucherList.innerHTML = vouchers.map(voucher => `
-    <article class="voucher-item mall-voucher-item">
-      <div>
-        <strong>${escapeHtml(voucher.title || "商城优惠券")}</strong>
-        <span>${escapeHtml(voucher.subTitle || voucher.rules || "下单时自动抵扣")}</span>
-      </div>
-      <button type="button" data-mall-voucher="${voucher.id}">
-        ${state.selectedVoucherId === String(voucher.id) ? "已选择" : "选择"}
-        <small>满 ¥${formatMoney(voucher.payValue)} 减 ¥${formatMoney(voucher.actualValue)}</small>
-      </button>
-    </article>
-  `).join("");
-  els.mallVoucherList.querySelectorAll("[data-mall-voucher]").forEach(button => {
-    button.addEventListener("click", () => {
-      state.selectedVoucherId = state.selectedVoucherId === button.dataset.mallVoucher ? null : button.dataset.mallVoucher;
-      renderMallVouchers(state.productVouchers);
-    });
-  });
-}
-
-// NOTE: FIRST version of addCurrentProductToCart (line 2020) - OVERRIDDEN by line 3500
-async function addCurrentProductToCart() {
-  if (!state.currentProduct || !requireLogin()) return;
-  await addToCart(state.currentProduct.id, 1);
-}
-
 async function addToCart(productId, quantity = 1) {
   try {
     await request("/mall/cart", {
@@ -222,22 +159,6 @@ async function addToCart(productId, quantity = 1) {
     showStatus("已加入购物车，可以继续逛或去购物车下单。");
   } catch (error) {
     showStatus(error.message || "加入购物车失败，请检查登录状态和库存。");
-  }
-}
-
-// NOTE: FIRST version of buyCurrentProductNow (line 2037) - OVERRIDDEN by line 2175 and then 3505
-async function buyCurrentProductNow() {
-  if (!state.currentProduct || !requireLogin()) return;
-  try {
-    const order = await createMallOrder({
-      productId: state.currentProduct.id,
-      quantity: 1,
-      voucherId: state.selectedVoucherId ? Number(state.selectedVoucherId) : null
-    });
-    els.productDialog.close();
-    showStatus(`下单成功，订单号：${order.id}`);
-  } catch (error) {
-    showStatus(error.message || "下单失败，请稍后再试。");
   }
 }
 
@@ -289,17 +210,6 @@ function renderCartItems(items) {
   });
 }
 
-// NOTE: FIRST version of orderFromCart (line 2100) - OVERRIDDEN by line 2188 and then 3523
-async function orderFromCart(cartItemId) {
-  try {
-    const order = await createMallOrder({ cartItemId: Number(cartItemId) });
-    showStatus(`下单成功，订单号：${order.id}`);
-    openCartDialog();
-  } catch (error) {
-    showStatus(error.message || "购物车下单失败，请检查库存。");
-  }
-}
-
 async function removeCartItem(cartItemId) {
   try {
     await request(`/mall/cart/${cartItemId}`, { method: "DELETE" });
@@ -322,24 +232,6 @@ async function openOrdersDialog() {
   }
 }
 
-// NOTE: FIRST version of renderOrders (line 2132) - OVERRIDDEN by line 2198
-function renderOrders(orders) {
-  if (!orders.length) {
-    els.cartList.innerHTML = `<p class="empty-text">还没有商城订单。</p>`;
-    return;
-  }
-  els.cartList.innerHTML = orders.map(order => `
-    <article class="cart-item order-item">
-      <img src="${normalizeImage(order.productImage)}" alt="${escapeHtml(order.productTitle)}">
-      <div>
-        <strong>${escapeHtml(order.productTitle)}</strong>
-        <span>订单号 ${order.id}</span>
-        <small>¥${formatMoney(order.totalAmount)} · 优惠 ¥${formatMoney(order.discountAmount)} · ${mallOrderStatus(order.status)}</small>
-      </div>
-    </article>
-  `).join("");
-}
-
 function mallOrderStatus(status) {
   return {
     1: "待支付",
@@ -354,45 +246,6 @@ async function payMallOrder(orderId) {
   return request(`/mall/orders/${orderId}/pay`, { method: "POST" });
 }
 
-// NOTE: FIRST version of buyProductNow (line 2163) - OVERRIDDEN by line 3517
-async function buyProductNow(productId) {
-  if (!requireLogin()) return;
-  try {
-    const order = await createMallOrder({ productId: Number(productId), quantity: 1 });
-    await payMallOrder(order.id);
-    showStatus(`付款成功，订单号：${order.id}`);
-    loadProducts();
-  } catch (error) {
-    showStatus(error.message || "购买失败，请稍后再试。");
-  }
-}
-
-// NOTE: SECOND version of buyCurrentProductNow (line 2175) - OVERRIDDEN by line 3505
-async function buyCurrentProductNow() {
-  if (!state.currentProduct || !requireLogin()) return;
-  try {
-    const order = await createMallOrder({ productId: state.currentProduct.id, quantity: 1 });
-    els.productDialog.close();
-    await payMallOrder(order.id);
-    showStatus(`付款成功，实付 ¥${formatMoney(order.totalAmount)}，订单号：${order.id}`);
-    loadProducts();
-  } catch (error) {
-    showStatus(error.message || "下单失败，请稍后再试。");
-  }
-}
-
-// NOTE: SECOND version of orderFromCart (line 2188) - OVERRIDDEN by line 3523
-async function orderFromCart(cartItemId) {
-  try {
-    const order = await createMallOrder({ cartItemId: Number(cartItemId) });
-    showStatus(`下单成功，订单号：${order.id}，可在我的订单里付款。`);
-    openCartDialog();
-  } catch (error) {
-    showStatus(error.message || "购物车下单失败，请检查库存。");
-  }
-}
-
-// NOTE: SECOND/FINAL version of renderOrders (line 2198)
 function renderOrders(orders) {
   if (!orders.length) {
     els.cartList.innerHTML = `<p class="empty-text">还没有商城订单。</p>`;
@@ -435,11 +288,7 @@ async function askOrderService(orderId, question) {
   if (!question?.trim() || !answer) return;
   answer.textContent = "正在查询订单并生成客服回复...";
   try {
-    const data = await aiFlow("/ai/flow/customer-service", {
-      orderId: Number(orderId),
-      query: question
-    });
-    answer.textContent = data.answer || "暂时没有生成有效回复。";
+    answer.textContent = await fetchCustomerServiceAnswer(question, { orderId: Number(orderId), scenario: "order" });
   } catch {
     answer.textContent = "客服助手暂时不可用，可以稍后再试。";
   }
@@ -459,8 +308,6 @@ async function payOrderFromList(orderId) {
 // 商品详情与结算页：接入 SKU、地址、优惠券、评价、商家和 AI 导购
 // ------------------------------
 
-// NOTE: This is the SECOND/authoritative version of openProduct (line 3315).
-// In JS, later function declarations override earlier ones.
 async function openProduct(productId) {
   let product = state.mallProducts.find(item => String(item.id) === String(productId));
   try {
@@ -610,7 +457,6 @@ async function toggleMallFavorite(targetType, targetId) {
   }
 }
 
-// NOTE: This is the SECOND/authoritative version of renderMallVouchers (line 3464).
 function renderMallVouchers(vouchers) {
   if (!els.mallVoucherList) return;
   state.productVouchers = Array.isArray(vouchers) ? vouchers : [];
@@ -647,13 +493,11 @@ function couponScopeLabel(voucher) {
   }[String(voucher.scopeType || "").toUpperCase()] || "下单可用";
 }
 
-// NOTE: SECOND/authoritative version of addCurrentProductToCart (line 3500).
 async function addCurrentProductToCart() {
   if (!state.currentProduct || !requireLogin()) return;
   await addToCart(state.currentProduct.id, state.checkoutQuantity || 1);
 }
 
-// NOTE: THIRD/authoritative version of buyCurrentProductNow (line 3505).
 async function buyCurrentProductNow() {
   if (!state.currentProduct || !requireLogin()) return;
   openCheckout({
@@ -666,14 +510,12 @@ async function buyCurrentProductNow() {
   });
 }
 
-// NOTE: SECOND/authoritative version of buyProductNow (line 3517).
 async function buyProductNow(productId) {
   if (!requireLogin()) return;
   await openProduct(productId);
   await buyCurrentProductNow();
 }
 
-// NOTE: THIRD/authoritative version of orderFromCart (line 3523).
 async function orderFromCart(cartItemId) {
   if (!requireLogin()) return;
   const item = state.cartItems.find(row => String(row.id) === String(cartItemId));
