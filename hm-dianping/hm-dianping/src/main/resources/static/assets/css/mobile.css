@@ -96,26 +96,6 @@
     padding: 10px 10px 72px;
   }
 
-  .discover-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    margin-bottom: 14px;
-  }
-
-  .discover-card {
-    min-height: 80px;
-    padding: 10px 6px;
-    gap: 6px;
-  }
-
-  .discover-icon {
-    font-size: 22px;
-  }
-
-  .discover-label {
-    font-size: 11px;
-  }
-
   .masonry-feed {
     column-count: 2;
     column-width: auto;

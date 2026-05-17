@@ -28,13 +28,13 @@ public class MvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        //请求日志拦截器（最先执行）
+        // 请求日志拦截器（最先执行，记录所有请求）
         registry.addInterceptor(requestLoggingInterceptor)
                 .addPathPatterns("/**").order(-1);
-        //限流拦截器
+        // 限流拦截器：对登录/验证码/上传接口做频率限制
         registry.addInterceptor(rateLimitInterceptor)
                 .addPathPatterns("/user/code", "/user/login", "/upload/**").order(0);
-        //登录拦截器
+        // 登录拦截器：除公开接口外，其余接口需要登录态
         registry.addInterceptor(new LoginInterceptor()).
                 excludePathPatterns(
                         "/",
@@ -43,11 +43,14 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/favicon.ico",
                         "/error",
                         "/imgs/**",
+                        // 用户登录相关
                         "/user/code",
                         "/user/login",
+                        // 店铺浏览（公开）
                         "/shop/**",
-                        "/shop-type/**",
+                        // 优惠券浏览（公开）
                         "/voucher/**",
+                        // 笔记 feed、搜索、趋势、联想（公开浏览）
                         "/notes/feed",
                         "/notes/search",
                         "/notes/trends",
@@ -55,22 +58,26 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/notes/*",
                         "/notes/user/**",
                         "/notes/comments/of/blog",
+                        // 个人主页查看（公开）
                         "/profiles/*",
+                        // AI 智能体流式接口（公开）
                         "/ai/flow/search",
                         "/ai/flow/shopping-guide",
                         "/ai/flow/note-summary",
                         "/ai/flow/customer-service",
                         "/ai/customer-service/chat",
+                        // 商城商品浏览（公开）
                         "/mall/products/**",
-                        "/content/**",
+                        // 直播公开接口
                         "/live/public/**",
+                        // 行为采集（公开，匿名也可上报）
                         "/note-event",
+                        // 视频弹幕公开接口
                         "/video-danmaku/public/**",
-                        "/blog-comments/of/blog",
-                        "/blog-collect/or/not/**",
-                        "/blog/hot"
+                        // 评论浏览（公开）
+                        "/blog-comments/of/blog"
                 ).addPathPatterns("/**").order(1);
-        //刷新token拦截器
+        // Token 刷新拦截器：自动续期登录态
         registry.addInterceptor(new RefreshTokenInterceptor(stringRedisTemplate))
                 .addPathPatterns("/**").order(0);
     }

@@ -160,16 +160,6 @@
       loadProducts();
     });
   });
-  document.querySelectorAll(".discover-card").forEach(function(card) {
-    card.addEventListener("click", function() {
-      state.category = card.dataset.category;
-      els.search.value = "";
-      resetAndLoad();
-      document.querySelectorAll(".category-pill").forEach(function(p) {
-        p.classList.toggle("is-active", p.dataset.category === state.category);
-      });
-    });
-  });
   document.querySelector("#loginButton").addEventListener("click", function() { els.loginDialog.showModal(); });
   els.loginDialog.addEventListener("click", function(e) { if (e.target === els.loginDialog) els.loginDialog.close(); });
   document.querySelector("#editProfileButton").addEventListener("click", openProfileEdit);

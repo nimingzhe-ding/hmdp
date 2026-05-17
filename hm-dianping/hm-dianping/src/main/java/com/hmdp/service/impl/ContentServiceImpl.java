@@ -64,9 +64,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 内容社区聚合服务实现。
- * 这里把旧的探店 Blog 模型包装成图文社区需要的 Feed、详情、主页、收藏和趋势接口，
- * 前端只需要面向 /content 系列接口，不再散落调用多个旧业务接口。
+ * 内容社区聚合服务 —— 前端主要 API（/notes/**）的核心业务实现。
+ * 把旧的探店 Blog 模型包装成小红书式社区：信息流、详情、个人主页、收藏、
+ * 搜索、趋势、热搜榜、AI 推荐/总结等功能。
+ * 通过批量查询和缓存避免 N+1 查询，统一管理 Redis 搜索历史与热度数据。
  */
 @Service
 public class ContentServiceImpl implements IContentService {
@@ -116,6 +117,12 @@ public class ContentServiceImpl implements IContentService {
     @Resource
     private INoteEventService noteEventService;
 
+    // ==================== 信息流与搜索 ====================
+
+    /**
+     * 首页信息流：按频道（hot/follow/nearby/video/mall/recommend）查询笔记，
+     * 支持关键词过滤和地理位置附近推荐，返回带交互状态的卡片列表。
+     */
     @Override
     public Result feed(String channel, String query, Integer current, Double x, Double y) {
         int pageNo = normalizePage(current);
@@ -123,6 +130,10 @@ public class ContentServiceImpl implements IContentService {
         return Result.ok(toFeedResult(page, query));
     }
 
+    /**
+     * 统一搜索：按关键词检索笔记、视频、商品、店铺、话题，
+     * 自动保存搜索历史到 Redis。
+     */
     @Override
     public Result search(String query, Integer current) {
         String keyword = StrUtil.trim(query);
@@ -147,6 +158,12 @@ public class ContentServiceImpl implements IContentService {
         return Result.ok(result);
     }
 
+    // ==================== 笔记详情 ====================
+
+    /**
+     * 笔记详情：加载完整内容 + 作者信息 + 创作者成长 + 相关推荐，
+     * 登录用户自动记录浏览行为。
+     */
     @Override
     public Result detail(Long blogId) {
         if (blogId == null) {
@@ -165,6 +182,8 @@ public class ContentServiceImpl implements IContentService {
         }
         return Result.ok(note);
     }
+
+    // ==================== 个人中心（我的笔记/收藏/点赞） ====================
 
     @Override
     public Result mine(Integer current) {
@@ -192,6 +211,8 @@ public class ContentServiceImpl implements IContentService {
         }
         return userLiked(user.getId(), current);
     }
+
+    // ==================== 用户主页（他人/自己的笔记、收藏、关注、粉丝） ====================
 
     @Override
     public Result userNotes(Long userId, Integer current) {
@@ -270,6 +291,11 @@ public class ContentServiceImpl implements IContentService {
         return Result.ok(findUsersByIds(userIds), page.getTotal());
     }
 
+    // ==================== 个人资料（查看/编辑） ====================
+
+    /**
+     * 查看用户资料：返回昵称、头像、简介、城市、作品数、互动数据、关注关系。
+     */
     @Override
     public Result profile(Long userId) {
         UserDTO currentUser = UserHolder.getUser();
@@ -341,6 +367,8 @@ public class ContentServiceImpl implements IContentService {
         currentUser.setIcon(user.getIcon());
         return profile(currentUser.getId());
     }
+
+    // ==================== 搜索趋势与 AI ====================
 
     @Override
     public Result trends() {
@@ -430,10 +458,15 @@ public class ContentServiceImpl implements IContentService {
         return safeAiQuery(aiRequest, "这篇笔记可以重点看标题、图片和评论反馈；智能看点暂时不可用。");
     }
 
+    // ==================== Feed 查询构造（核心排序逻辑） ====================
+
     /**
      * 构造内容流查询条件。
-     * hot 使用互动热度 + 新鲜度排序；follow 只看关注作者；nearby 先复用内容搜索，
-     * 后续接入店铺坐标或 Redis GEO 后可以在这里替换为真正的附近推荐。
+     * hot → 互动分 = 点赞×3 + 评论×2 + 收藏×4 + 订单转化×8 + 新鲜度;
+     * follow → Redis 收件箱（Feed 推送），降级到 DB 关注列表;
+     * nearby → Redis GEO 查找附近店铺，再反查关联笔记;
+     * video → 视频完成率 + 互动分;
+     * recommend → 基于用户兴趣标签 Redis ZSET 的个性化推荐。
      */
     private Page<Blog> buildFeedQuery(String channel, String query, int pageNo, Double x, Double y) {
         String normalizedChannel = StrUtil.blankToDefault(channel, "hot");

@@ -571,53 +571,6 @@
   min-width: 0;
 }
 
-/* Discover strip: lifestyle category cards */
-.discover-strip {
-  display: none;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.discover-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 96px;
-  border: 0;
-  border-radius: var(--r-lg);
-  background: var(--surface-soft);
-  color: var(--text);
-  padding: 14px 8px;
-  cursor: pointer;
-  transition: background var(--dur-fast) ease, transform var(--dur-fast) var(--ease-spring), box-shadow var(--dur-fast) ease;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.discover-card:hover {
-  background: var(--accent-light);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-soft);
-}
-
-.discover-card:active {
-  transform: scale(.96);
-}
-
-.discover-icon {
-  font-size: 26px;
-  line-height: 1;
-}
-
-.discover-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
 .video-area {
   min-width: 0;
 }

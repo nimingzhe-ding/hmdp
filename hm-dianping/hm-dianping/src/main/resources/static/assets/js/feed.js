@@ -1,14 +1,10 @@
-// feed.js — Feed loading, note cards, category filters, and feed switching
-// Depends on utils.js (state, els, token, request, requireLogin, showStatus, hideStatus,
-//   normalizeNote, normalizeImage, normalizeMedia, escapeHtml, renderSkeletons, clearSkeletons,
-//   trackEvent, contentTypeLabel, fallbackNotes, fallbackCategories, fallbackSuggestions,
-//   loadProfileStats, normalizeProduct, normalizeShop, formatMoney)
-// References: openDrawer, showContentArea, pauseFeedVideos, renderCreatorGrowth
+// feed.js — 笔记信息流：分类筛选、瀑布流加载、卡片渲染、频道切换
+// 依赖 utils.js（state, els, token, request, requireLogin, showStatus, hideStatus 等）
+// 被引用函数：openDrawer, showContentArea, pauseFeedVideos, renderCreatorGrowth
 (function() {
 
-// ------------------------------
-// Topic filters
-// ------------------------------
+// ==================== 分类频道 ====================
+// 小红书式固定入口，后端 /notes/feed 根据 query 参数返回对应结果
 async function loadCategories() {
   renderCategories([
     { id: "all", name: "推荐" },
@@ -19,13 +15,6 @@ async function loadCategories() {
     { id: "goods", name: "好物" },
     { id: "shop", name: "探店" }
   ]);
-  return;
-  try {
-    const data = await request("/shop-type/list");
-    renderCategories([{ id: "all", name: "推荐" }, ...data.map(item => ({ id: item.id, name: item.name }))]);
-  } catch {
-    renderCategories(fallbackCategories);
-  }
 }
 window.loadCategories = loadCategories;
 
@@ -50,9 +39,8 @@ function renderCategories(categories) {
 }
 window.renderCategories = renderCategories;
 
-// ------------------------------
-// Note feed loading and rendering
-// ------------------------------
+// ==================== 笔记流加载与渲染 ====================
+// 核心数据流：fetch → normalizeNote → createNoteCard → appendNotes
 async function loadNotes() {
   if (state.loading || !state.hasMore) return;
   if ((state.feed === "follow" || state.mode === "mine" || state.mode === "collections") && !token()) {
@@ -71,12 +59,7 @@ async function loadNotes() {
     const data = await request(buildContentUrl());
     let notes = (Array.isArray(data?.list) ? data.list : []).map(normalizeNote);
     if (!notes.length && state.page === 1) {
-      if (state.mode === "feed") {
-        notes = fallbackNotes.map(normalizeNote);
-        hideStatus();
-      } else {
-        showStatus(state.mode === "mine" ? "你还没有发布笔记，可以先发布第一篇。" : "你还没有收藏笔记。");
-      }
+      showStatus(state.mode === "feed" ? "还没有匹配的笔记，换个频道或关键词试试。" : personalEmptyText());
     } else if (notes.length) {
       hideStatus();
     }
@@ -86,12 +69,10 @@ async function loadNotes() {
     loadProfileStats();
     state.page += 1;
     state.hasMore = Boolean(data?.hasMore);
-  } catch {
+  } catch (error) {
     if (state.page === 1) {
-      const notes = fallbackNotes.map(normalizeNote);
-      appendNotes(notes);
-      state.notes = notes;
-      hideStatus();
+      clearSkeletons();
+      showStatus(error.message || "笔记加载失败，请确认后端 /notes/feed 已启动。");
     }
     state.hasMore = false;
   } finally {
@@ -101,6 +82,12 @@ async function loadNotes() {
 }
 window.loadNotes = loadNotes;
 
+function personalEmptyText() {
+  return state.mode === "mine" ? "你还没有发布笔记，可以先发布第一篇。" : "你还没有收藏笔记。";
+}
+window.personalEmptyText = personalEmptyText;
+
+// 根据当前模式构建 API 请求 URL：mine → /notes/mine，collections → /notes/collections，否则 → /notes/feed
 function buildContentUrl() {
   const params = new URLSearchParams({ current: String(state.page) });
   if (state.mode === "mine") {
@@ -160,9 +147,8 @@ function createNoteCard(note) {
 }
 window.createNoteCard = createNoteCard;
 
-// ------------------------------
-// Feed reset and AI recommendation
-// ------------------------------
+// ==================== 流重置与切换 ====================
+// 切换频道/分类/搜索时调用，清空当前流重新加载
 function resetAndLoad(clearStatus = true) {
   hideUnifiedSearch();
   hideProfileHome();
@@ -191,9 +177,8 @@ function hideProfileHome() {
 }
 window.hideProfileHome = hideProfileHome;
 
-// ------------------------------
-// Feed switching
-// ------------------------------
+// ==================== 频道/个人模式切换 ====================
+
 function switchFeed(feed) {
   showContentArea();
   setMobileTabActive("home");

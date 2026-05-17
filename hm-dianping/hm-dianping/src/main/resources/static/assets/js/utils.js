@@ -1,9 +1,8 @@
-// utils.js — Global state, DOM refs, and shared utility functions
-// Loaded BEFORE auth.js, notifications.js, feed.js
+// utils.js — 全局状态、DOM 引用、共享工具函数
+// 加载顺序：第一个加载，auth.js / feed.js / detail.js 等都依赖它
 (function() {
-// ------------------------------
-// Global state
-// ------------------------------
+// ==================== 全局状态 ====================
+// 集中管理所有页面的运行时状态，避免分散在各模块中难以追踪
 window.state = {
   notes: [],
   page: 1,
@@ -60,9 +59,8 @@ window.state = {
 
 localStorage.setItem("hmdp_ai_session", state.aiSessionId);
 
-// ------------------------------
-// DOM references
-// ------------------------------
+// ==================== DOM 引用缓存 ====================
+// 页面加载时一次性获取所有 DOM 元素的引用，避免各处重复 querySelector
 window.els = {
   feed: document.querySelector("#noteFeed"),
   loading: document.querySelector("#feedLoading"),
@@ -145,9 +143,8 @@ function setMobileTabActive(tab) {
 }
 window.setMobileTabActive = setMobileTabActive;
 
-// ------------------------------
-// Toast 通知
-// ------------------------------
+// ==================== Toast 通知 ====================
+// 非阻塞式轻提示，自动消失，支持 info / success / error 三种类型
 function showToast(message, type = "info", duration = 2500) {
   const container = els.toastContainer;
   if (!container) return;
@@ -162,9 +159,8 @@ function showToast(message, type = "info", duration = 2500) {
 }
 window.showToast = showToast;
 
-// ------------------------------
-// 骨架屏
-// ------------------------------
+// ==================== 骨架屏 ====================
+// 首次加载时显示占位卡片，提升感知性能
 function renderSkeletons(count = 8) {
   let html = "";
   for (let i = 0; i < count; i++) {
@@ -189,94 +185,20 @@ function clearSkeletons() {
 }
 window.clearSkeletons = clearSkeletons;
 
-// ------------------------------
-// Demo data used when backend data is not available
-// ------------------------------
+// ==================== 媒体资源兜底 ====================
+// 当后端未返回图片/头像时使用的默认占位图，非假内容数据
 var fallbackAvatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80";
 window.fallbackAvatar = fallbackAvatar;
 
-var fallbackNotes = [
-  {
-    id: 9001,
-    title: "人均 30 的港式茶餐厅，漏奶华真的很会",
-    images: "https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=900&q=80",
-    content: "复古灯牌、卡座和热奶茶都很有氛围。推荐黯然销魂饭、漏奶华和丝袜奶茶，适合朋友小聚，也适合下班后快速补充快乐。",
-    liked: 128,
-    comments: 18,
-    userId: 2,
-    name: "阿茶今天吃什么",
-    icon: fallbackAvatar,
-    createTime: "2026-05-10T20:10:00"
-  },
-  {
-    id: 9002,
-    title: "西湖边新开的花园餐厅，拍照和约会都合适",
-    images: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=900&q=80",
-    content: "环境有很多鲜花和暖光，晚餐时段更漂亮。牛排、意面和烤鱼表现稳定，价格略高但适合纪念日。",
-    liked: 256,
-    comments: 36,
-    userId: 3,
-    name: "慢慢探店",
-    icon: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=120&q=80",
-    createTime: "2026-05-09T18:42:00"
-  },
-  {
-    id: 9003,
-    title: "周末骑马 50 元起，杭州近郊轻户外路线",
-    images: "https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=900&q=80",
-    content: "路线不难，适合第一次体验。建议下午四点后去，光线更柔和，拍照也不晒。",
-    liked: 91,
-    comments: 9,
-    userId: 4,
-    name: "城市出逃计划",
-    icon: "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=120&q=80",
-    createTime: "2026-05-08T16:05:00"
-  },
-  {
-    id: 9004,
-    title: "适合一个人坐一下午的咖啡店",
-    images: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=900&q=80",
-    content: "插座多，座位间距舒服，手冲和巴斯克都不错。工作日来更安静。",
-    liked: 173,
-    comments: 24,
-    userId: 5,
-    name: "咖啡地图",
-    icon: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=120&q=80",
-    createTime: "2026-05-07T14:24:00"
-  },
-  {
-    id: 9005,
-    title: "视频笔记：一分钟看完今日探店路线",
-    images: "https://images.unsplash.com/photo-1525610553991-2bede1a236e2?auto=format&fit=crop&w=900&q=80",
-    content: "从咖啡店到晚餐店，一条适合周末的轻松路线。\n#video:https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-    liked: 342,
-    comments: 41,
-    userId: 6,
-    name: "短视频探店员",
-    icon: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80",
-    createTime: "2026-05-12T19:30:00"
-  }
-];
-window.fallbackNotes = fallbackNotes;
+var defaultNoteImage = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=900&q=80";
+window.defaultNoteImage = defaultNoteImage;
 
-var fallbackCategories = [
-  { id: "all", name: "推荐" },
-  { id: "food", name: "美食" },
-  { id: "coffee", name: "咖啡" },
-  { id: "weekend", name: "周末" },
-  { id: "date", name: "约会" },
-  { id: "photo", name: "拍照" },
-  { id: "cheap", name: "平价" },
-  { id: "new", name: "新店" }
-];
-window.fallbackCategories = fallbackCategories;
+var defaultSuggestions = ["杭州周末", "港式茶餐厅", "咖啡拍照", "人均50", "约会餐厅", "新店打卡", "一个人吃饭", "生日聚餐"];
+window.defaultSuggestions = defaultSuggestions;
 
-var fallbackSuggestions = ["杭州周末", "港式茶餐厅", "咖啡拍照", "人均50", "约会餐厅", "新店打卡", "一个人吃饭", "生日聚餐"];
-window.fallbackSuggestions = fallbackSuggestions;
+// ==================== HTTP 请求与格式化工具 ====================
+// 自动处理 Token 注入、API 路径拼接、错误统一处理
 
-// ------------------------------
-// Request and formatting helpers
-// ------------------------------
 const API_ORIGIN = (() => {
   const configured = localStorage.getItem("hmdp_api_origin");
   if (configured) return configured.replace(/\/$/, "");
@@ -298,6 +220,7 @@ function token() {
 }
 window.token = token;
 
+// 统一请求方法：自动拼接 API 前缀、注入 Authorization header、解析 JSON 响应
 async function request(url, options = {}) {
   const headers = new Headers(options.headers || {});
   if (token()) headers.set("authorization", token());
@@ -313,6 +236,7 @@ async function request(url, options = {}) {
 }
 window.request = request;
 
+// AI 专用请求方法：自动注入 sessionId
 async function aiFlow(url, payload = {}) {
   return request(url, {
     method: "POST",
@@ -340,9 +264,10 @@ async function checkAiRisk(content, scenario) {
 }
 window.checkAiRisk = checkAiRisk;
 
+// 笔记数据标准化：补全图片/视频/作者信息，统一前后端字段差异
 function normalizeNote(note, index = 0) {
   const images = String(note.images || "").split(",").map(item => item.trim()).filter(Boolean);
-  const image = images[0] || fallbackNotes[index % fallbackNotes.length].images;
+  const image = images[0] || defaultNoteImage;
   const parsedContent = parseVideoContent(note.content || "");
   const videoUrl = normalizeMedia(note.videoUrl || note.video || parsedContent.videoUrl);
   const contentType = normalizeContentType(note.contentType, videoUrl);
@@ -352,7 +277,7 @@ function normalizeNote(note, index = 0) {
     images,
     contentType,
     name: note.name || `探店用户 ${note.userId || ""}`.trim(),
-    icon: normalizeImage(note.icon) || fallbackNotes[index % fallbackNotes.length].icon,
+    icon: normalizeImage(note.icon) || fallbackAvatar,
     liked: note.liked || 0,
     comments: note.comments || 0,
     content: parsedContent.content,
@@ -426,6 +351,7 @@ function showStatus(message) {
 }
 window.showStatus = showStatus;
 
+// 用户行为采集：曝光/点击/搜索等事件异步上报，失败不影响主流程
 function trackEvent(eventType, options = {}) {
   request("/note-event", {
     method: "POST",
@@ -453,12 +379,13 @@ function requireLogin() {
 }
 window.requireLogin = requireLogin;
 
-function normalizeProduct(product, index = 0) {
+// 商品数据标准化：补全图片、价格、库存等字段
+function normalizeProduct(product) {
   const images = String(product.images || "").split(",").map(item => item.trim()).filter(Boolean);
   return {
     ...product,
     images,
-    image: normalizeImage(images[0]) || fallbackNotes[index % fallbackNotes.length].images,
+    image: normalizeImage(images[0]) || defaultNoteImage,
     title: product.title || "精选商品",
     subTitle: product.subTitle || product.sub_title || "内容同款好物",
     price: Number(product.price || 0),
@@ -470,11 +397,12 @@ function normalizeProduct(product, index = 0) {
 }
 window.normalizeProduct = normalizeProduct;
 
-function normalizeShop(shop, index = 0) {
+// 店铺数据标准化：补全图片、地址、评分、销量等字段
+function normalizeShop(shop) {
   const images = String(shop.images || "").split(",").map(item => item.trim()).filter(Boolean);
   return {
     ...shop,
-    image: normalizeImage(images[0]) || fallbackNotes[index % fallbackNotes.length].images,
+    image: normalizeImage(images[0]) || defaultNoteImage,
     name: shop.name || "本地商家",
     area: shop.area || "本地生活",
     address: shop.address || "",
