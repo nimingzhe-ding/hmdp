@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -12,7 +14,8 @@ import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
 import com.hmdp.utils.SystemConstants;
-import io.lettuce.core.api.sync.RedisAclCommands;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
@@ -22,6 +25,7 @@ import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -41,6 +45,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private CacheClient cacheClient;
+    @Resource
+    private RedissonClient redissonClient;
     /**
      * 根据id查询商铺信息
      * @param id
@@ -56,31 +62,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         //（逻辑过期）解决方案
         //Shop shop = cacheClient.queryWithLogicalExpire(RedisConstants.CACHE_SHOP_KEY,id, Shop.class,30L, TimeUnit.SECONDS,this::getById);
         if (shop == null) {
-            return Result.fail("店铺不存在！");
+            throw new BusinessException(ErrorCode.SHOP_NOT_EXIST);
         }
         //6.返回
         return Result.ok(shop);
-    }
-
-    /**
-     * 尝试获取锁
-     * @param key
-     * @return
-     */
-    private boolean tryLock(String key){
-        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
-        return Boolean.TRUE.equals(flag);
-    }
-
-    /**
-     * 释放锁
-     * @param key
-     */
-    private void unlock(String key){
-        stringRedisTemplate.delete(key);
-    }
-    public void unlock1(String key){
-        stringRedisTemplate.delete(key);
     }
 
     /**
@@ -108,7 +93,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     public Result update(Shop shop) {
         Long id = shop.getId();
         if (id == null) {
-            return Result.fail("店铺id不能为空！");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "店铺id不能为空！");
         }
         //更新数据库
         updateById(shop);
@@ -126,9 +111,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         String shopJson = stringRedisTemplate.opsForValue().get(RedisConstants.CACHE_SHOP_KEY + id);
         //2.如果存在，直接返回
         if (StrUtil.isNotBlank(shopJson)) {
-            //存在，直接返回
-            Shop shop = JSONUtil.toBean(shopJson, Shop.class);
-            return  shop;
+            return JSONUtil.toBean(shopJson, Shop.class);
         }
         //2.1.命中的是空值，返回错误
         if (shopJson != null) {
@@ -136,37 +119,26 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
         //实现缓存重建
         String lockKey = RedisConstants.LOCK_SHOP_KEY+id;
-        //获取互斥锁
+        RLock lock = redissonClient.getLock(lockKey);
         Shop shop = null;
-        boolean isLock = false;
         try {
-            isLock = tryLock(lockKey);
-            //判断是否获取成功
+            boolean isLock = lock.tryLock();
             if(!isLock){
-                //失败，休眠并重试
-
-                    Thread.sleep(50);
-
+                Thread.sleep(50);
                 return queryWithMutex(id);
             }
-            //成功。根据id查询数据库
             shop = getById(id);
-            //4.不存在，返回错误
             if (shop == null) {
-                //将空值写入到redis缓存，防止缓存穿透
                 stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, "",2L, TimeUnit.MINUTES);
                 return null;
             }
-            //5.存在，写入redis缓存
             stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(shop),30L, TimeUnit.MINUTES);
-
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }finally {
-            //6.释放互斥锁，返回
-            if (isLock) {
-                unlock(lockKey);
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
             }
         }
         return shop;
@@ -246,17 +218,18 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         // 5. 已过期，缓存重建
         String lockKey = RedisConstants.LOCK_SHOP_KEY + id;
-        boolean isLock = tryLock(lockKey);
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean isLock = lock.tryLock();
         if (isLock) {
-            // 获取锁成功，开启独立线程
             new Thread(() -> {
                 try {
-                    // 重建缓存
-                    this.saveShopToRedis(id, 20L); // 建议测试时过期时间设短点
+                    this.saveShopToRedis(id, 20L);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 } finally {
-                    unlock(lockKey);
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
                 }
             }).start();
         }
@@ -349,5 +322,26 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
         //返回
         return Result.ok(shops);
+    }
+
+    /**
+     * 启动时加载所有店铺坐标到全局 GEO 集合，供附近流使用。
+     */
+    @PostConstruct
+    public void loadAllShopGeo() {
+        try {
+            List<Shop> shops = list();
+            if (shops == null || shops.isEmpty()) return;
+            String key = RedisConstants.SHOP_GEO_ALL_KEY;
+            for (Shop shop : shops) {
+                if (shop.getX() != null && shop.getY() != null) {
+                    stringRedisTemplate.opsForGeo().add(key,
+                            new RedisGeoCommands.GeoLocation<>(shop.getId().toString(),
+                                    new org.springframework.data.geo.Point(shop.getX(), shop.getY())));
+                }
+            }
+        } catch (Exception e) {
+            // GEO 加载失败不影响启动
+        }
     }
 }

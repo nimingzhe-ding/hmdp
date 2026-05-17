@@ -10,6 +10,8 @@ import com.hmdp.entity.MallCategory;
 import com.hmdp.entity.MallFavorite;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.MallReview;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.entity.MallSku;
 import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.MallCategoryMapper;
@@ -77,11 +79,11 @@ public class MallProductServiceImpl extends ServiceImpl<MallProductMapper, MallP
     @Override
     public Result detail(Long id) {
         if (id == null) {
-            return Result.fail("商品ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "商品ID不能为空");
         }
         MallProduct product = getById(id);
         if (product == null) {
-            return Result.fail("商品不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "商品不存在");
         }
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("product", product);

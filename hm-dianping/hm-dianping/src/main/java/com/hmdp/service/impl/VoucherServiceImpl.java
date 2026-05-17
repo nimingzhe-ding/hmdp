@@ -6,6 +6,8 @@ import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.VoucherMapper;
 import com.hmdp.entity.SeckillVoucher;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.service.IMallProductService;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherService;
@@ -46,7 +48,7 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     @Override
     public Result queryMallVoucherOfProduct(Long productId) {
         if (productId == null) {
-            return Result.fail("商品ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "商品ID不能为空");
         }
         MallProduct product = productService.getById(productId);
         if (product == null || product.getMerchantId() == null) {

@@ -53,6 +53,11 @@ public class User implements Serializable {
     private String icon = "";
 
     /**
+     * 用户角色：0游客 1用户 2商家 3管理员
+     */
+    private Integer role = 0;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;

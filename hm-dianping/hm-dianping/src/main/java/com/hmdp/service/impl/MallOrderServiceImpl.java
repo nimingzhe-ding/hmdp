@@ -11,9 +11,12 @@ import com.hmdp.entity.MallOrder;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.MallRefund;
 import com.hmdp.entity.MallSku;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.entity.MerchantNotification;
 import com.hmdp.entity.UserAddress;
 import com.hmdp.entity.Voucher;
+import com.hmdp.enums.EventType;
 import com.hmdp.mapper.MallLogisticsMapper;
 import com.hmdp.mapper.MallOrderMapper;
 import com.hmdp.mapper.MallRefundMapper;
@@ -23,6 +26,7 @@ import com.hmdp.mapper.UserAddressMapper;
 import com.hmdp.service.IMallCartService;
 import com.hmdp.service.IMallOrderService;
 import com.hmdp.service.IMallProductService;
+import com.hmdp.service.INoteEventService;
 import com.hmdp.service.IUserNotificationService;
 import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.RedisIdWorker;
@@ -72,13 +76,15 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     private MallLogisticsMapper logisticsMapper;
     @Resource
     private MallRefundMapper refundMapper;
+    @Resource
+    private INoteEventService noteEventService;
 
     @Override
     @Transactional
     public Result createOrder(MallOrderRequest request) {
         UserDTO user = UserHolder.getUser();
-        if (user == null) return Result.fail("请先登录");
-        if (request == null) return Result.fail("下单参数不能为空");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
+        if (request == null) throw new BusinessException(ErrorCode.PARAM_EMPTY, "下单参数不能为空");
 
         MallCartItem cartItem = null;
         Long productId = request.getProductId();
@@ -86,31 +92,31 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         if (request.getCartItemId() != null) {
             cartItem = cartService.getById(request.getCartItemId());
             if (cartItem == null || !user.getId().equals(cartItem.getUserId())) {
-                return Result.fail("购物车商品不存在");
+                throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "购物车商品不存在");
             }
             productId = cartItem.getProductId();
             quantity = cartItem.getQuantity();
         }
-        if (productId == null) return Result.fail("商品ID不能为空");
+        if (productId == null) throw new BusinessException(ErrorCode.PARAM_EMPTY, "商品ID不能为空");
 
         MallProduct product = productService.getById(productId);
         if (product == null || product.getStatus() == null || product.getStatus() != 1) {
-            return Result.fail("商品不存在或已下架");
+            throw new BusinessException(ErrorCode.PRODUCT_NOT_ONLINE);
         }
         MallSku sku;
         try {
             sku = loadSku(request.getSkuId(), productId);
         } catch (IllegalArgumentException e) {
-            return Result.fail(e.getMessage());
+            throw new BusinessException(ErrorCode.BAD_REQUEST, e.getMessage());
         }
         int stock = sku == null ? safeInt(product.getStock()) : safeInt(sku.getStock());
         if (stock < quantity) {
-            return Result.fail("库存不足");
+            throw new BusinessException(ErrorCode.STOCK_NOT_ENOUGH);
         }
 
         UserAddress address = loadOrderAddress(request.getAddressId(), user.getId());
         if (address == null) {
-            return Result.fail("请先选择收货地址");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "请先选择收货地址");
         }
 
         long unitPrice = sku == null || sku.getPrice() == null ? safeLong(product.getPrice()) : sku.getPrice();
@@ -121,7 +127,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                     ? chooseBestVoucher(product, originalAmount)
                     : resolveVoucher(request.getVoucherId(), product, originalAmount);
         } catch (IllegalArgumentException e) {
-            return Result.fail(e.getMessage());
+            throw new BusinessException(ErrorCode.BAD_REQUEST, e.getMessage());
         }
         long discountAmount = voucher == null ? 0L : Math.min(safeLong(voucher.getActualValue()), originalAmount);
         LocalDateTime now = LocalDateTime.now();
@@ -151,6 +157,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
         order.setUpdateTime(now);
         save(order);
 
+        noteEventService.track(user.getId(), null, EventType.PURCHASE, null, null);
         userNotificationService.notifyUser(user.getId(), null, "ORDER_CREATED", "订单已创建",
                 "你购买的《" + order.getProductTitle() + "》已生成订单，等待支付。", null, order.getId());
         notifyMerchant(order.getMerchantId(), "order_created", order);
@@ -163,7 +170,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     @Override
     public Result listMine(Integer status) {
         UserDTO user = UserHolder.getUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         LambdaQueryWrapper<MallOrder> wrapper = new LambdaQueryWrapper<MallOrder>()
                 .eq(MallOrder::getUserId, user.getId())
                 .orderByDesc(MallOrder::getCreateTime);
@@ -177,12 +184,12 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     @Transactional
     public Result payOrder(Long orderId) {
         UserDTO user = UserHolder.getUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         MallOrder order = getOrderAndCheckOwner(orderId, user.getId());
-        if (order == null) return Result.fail("订单不存在");
+        if (order == null) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
 
         boolean stockUpdated = decreaseStock(order);
-        if (!stockUpdated) return Result.fail("库存不足，支付失败");
+        if (!stockUpdated) throw new BusinessException(ErrorCode.STOCK_NOT_ENOUGH, "库存不足，支付失败");
 
         LocalDateTime now = LocalDateTime.now();
         boolean updated = update()
@@ -195,7 +202,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .update();
         if (!updated) {
             rollbackStock(order);
-            return Result.fail("当前订单状态不能支付");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "当前订单状态不能支付");
         }
         notifyMerchant(order.getMerchantId(), "order_paid", order);
         userNotificationService.notifyUser(order.getUserId(), null, "ORDER_PAID", "订单已支付",
@@ -206,9 +213,9 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     @Override
     public Result shipOrder(Long orderId) {
         UserDTO user = UserHolder.getUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         MallOrder order = getById(orderId);
-        if (order == null) return Result.fail("订单不存在");
+        if (order == null) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
 
         LocalDateTime now = LocalDateTime.now();
         boolean updated = update()
@@ -218,7 +225,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .eq("id", orderId)
                 .eq("status", STATUS_PENDING_SHIP)
                 .update();
-        if (!updated) return Result.fail("当前订单状态不能发货");
+        if (!updated) throw new BusinessException(ErrorCode.OPERATION_FAIL, "当前订单状态不能发货");
         saveLogistics(order, null, null, "SHIPPED", now, null);
         userNotificationService.notifyUser(order.getUserId(), null, "ORDER_SHIPPED", "商家已发货",
                 "你购买的《" + order.getProductTitle() + "》已发货。", null, order.getId());
@@ -228,7 +235,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     @Override
     public Result receiveOrder(Long orderId) {
         UserDTO user = UserHolder.getUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
 
         LocalDateTime now = LocalDateTime.now();
         boolean updated = update()
@@ -239,7 +246,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .eq("user_id", user.getId())
                 .eq("status", STATUS_SHIPPED)
                 .update();
-        if (!updated) return Result.fail("当前订单状态不能确认收货");
+        if (!updated) throw new BusinessException(ErrorCode.OPERATION_FAIL, "当前订单状态不能确认收货");
 
         MallOrder order = loadOrder(orderId);
         if (order != null) {
@@ -253,11 +260,11 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     @Override
     public Result cancelOrder(Long orderId) {
         UserDTO user = UserHolder.getUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         MallOrder order = getOrderAndCheckOwner(orderId, user.getId());
-        if (order == null) return Result.fail("订单不存在");
+        if (order == null) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
         if (order.getStatus() != STATUS_PENDING_PAY) {
-            return Result.fail("只有待支付订单才能取消");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "只有待支付订单才能取消");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -269,7 +276,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .eq("user_id", user.getId())
                 .eq("status", STATUS_PENDING_PAY)
                 .update();
-        if (!updated) return Result.fail("取消订单失败");
+        if (!updated) throw new BusinessException(ErrorCode.OPERATION_FAIL, "取消订单失败");
         userNotificationService.notifyUser(user.getId(), null, "ORDER_CANCELLED", "订单已取消",
                 "你购买的《" + order.getProductTitle() + "》订单已取消。", null, orderId);
         return Result.ok(loadOrder(orderId));
@@ -279,16 +286,16 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
     @Transactional
     public Result refundOrder(Long orderId) {
         UserDTO user = UserHolder.getUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         MallOrder order = getOrderAndCheckOwner(orderId, user.getId());
-        if (order == null) return Result.fail("订单不存在");
+        if (order == null) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
         if (order.getStatus() != STATUS_PAID && order.getStatus() != STATUS_PENDING_SHIP && order.getStatus() != STATUS_SHIPPED) {
-            return Result.fail("当前订单状态不能申请退款");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "当前订单状态不能申请退款");
         }
         if (refundMapper.selectCount(new LambdaQueryWrapper<MallRefund>()
                 .eq(MallRefund::getOrderId, orderId)
                 .in(MallRefund::getStatus, 0, 1)) > 0) {
-            return Result.fail("该订单已有售后处理中");
+            throw new BusinessException(ErrorCode.REPEAT_OPERATION, "该订单已有售后处理中");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -300,7 +307,7 @@ public class MallOrderServiceImpl extends ServiceImpl<MallOrderMapper, MallOrder
                 .eq("user_id", user.getId())
                 .in("status", STATUS_PAID, STATUS_PENDING_SHIP, STATUS_SHIPPED)
                 .update();
-        if (!updated) return Result.fail("申请退款失败");
+        if (!updated) throw new BusinessException(ErrorCode.OPERATION_FAIL, "申请退款失败");
 
         MallRefund refund = new MallRefund()
                 .setOrderId(orderId)

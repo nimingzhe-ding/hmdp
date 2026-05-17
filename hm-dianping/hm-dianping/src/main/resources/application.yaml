@@ -2,6 +2,8 @@ server:
   port: 8081
 
 spring:
+  main:
+    allow-circular-references: true
   application:
     name: hmdp
   ai:
@@ -34,6 +36,13 @@ logging:
     com.hmdp: debug
 
 hmdp:
+  storage:
+    type: "${HMDP_STORAGE_TYPE:local}"
+    oss:
+      endpoint: "${HMDP_OSS_ENDPOINT:}"
+      bucket: "${HMDP_OSS_BUCKET:}"
+      access-key: "${HMDP_OSS_ACCESS_KEY:}"
+      secret-key: "${HMDP_OSS_SECRET_KEY:}"
   upload:
     image-dir: "${HMDP_IMAGE_UPLOAD_DIR:D:/hmdp/nginx-1.18.0/html/hmdp/imgs}"
   ai:

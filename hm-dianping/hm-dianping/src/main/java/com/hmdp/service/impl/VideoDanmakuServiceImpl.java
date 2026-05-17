@@ -7,6 +7,8 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.VideoDanmaku;
 import com.hmdp.enums.ContentType;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.VideoDanmakuMapper;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IVideoDanmakuService;
@@ -31,7 +33,7 @@ public class VideoDanmakuServiceImpl extends ServiceImpl<VideoDanmakuMapper, Vid
     @Override
     public Result listByBlog(Long blogId) {
         if (blogId == null) {
-            return Result.fail("\u89c6\u9891ID\u4e0d\u80fd\u4e3a\u7a7a");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "视频ID不能为空");
         }
         if (!canUseDanmaku(blogId)) {
             return Result.ok(List.of());
@@ -52,16 +54,16 @@ public class VideoDanmakuServiceImpl extends ServiceImpl<VideoDanmakuMapper, Vid
     public Result send(VideoDanmaku danmaku) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("\u8bf7\u5148\u767b\u5f55\u540e\u518d\u53d1\u5f39\u5e55");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         if (danmaku == null || danmaku.getBlogId() == null) {
-            return Result.fail("\u89c6\u9891ID\u4e0d\u80fd\u4e3a\u7a7a");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "视频ID不能为空");
         }
         if (StrUtil.isBlank(danmaku.getContent())) {
-            return Result.fail("\u5f39\u5e55\u5185\u5bb9\u4e0d\u80fd\u4e3a\u7a7a");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "弹幕内容不能为空");
         }
         if (!canUseDanmaku(danmaku.getBlogId())) {
-            return Result.fail("\u53ea\u6709\u89c6\u9891\u548c\u76f4\u64ad\u5185\u5bb9\u53ef\u4ee5\u53d1\u9001\u5f39\u5e55");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "只有视频和直播内容可以发送弹幕");
         }
 
         // 保存用户 ID 便于后续审核和治理，但公开响应不暴露发送人。

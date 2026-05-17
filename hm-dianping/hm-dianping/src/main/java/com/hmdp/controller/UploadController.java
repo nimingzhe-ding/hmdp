@@ -2,6 +2,8 @@ package com.hmdp.controller;
 
 import cn.hutool.core.util.StrUtil;
 import com.hmdp.dto.Result;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,15 +37,15 @@ public class UploadController {
     @PostMapping("blog")
     public Result uploadImage(@RequestParam("file") MultipartFile image) {
         if (image == null || image.isEmpty()) {
-            return Result.fail("上传文件不能为空");
+            throw new BusinessException(ErrorCode.FILE_EMPTY);
         }
         if (image.getSize() > MAX_IMAGE_SIZE) {
-            return Result.fail("图片大小不能超过5MB");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "图片大小不能超过5MB");
         }
 
         String suffix = getValidatedSuffix(image);
         if (suffix == null) {
-            return Result.fail("只支持 jpg、jpeg、png、gif、webp 图片");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "只支持 jpg、jpeg、png、gif、webp 图片");
         }
 
         try {
@@ -61,14 +63,14 @@ public class UploadController {
     @PostMapping("video")
     public Result uploadVideo(@RequestParam("file") MultipartFile video) {
         if (video == null || video.isEmpty()) {
-            return Result.fail("上传文件不能为空");
+            throw new BusinessException(ErrorCode.FILE_EMPTY);
         }
         if (video.getSize() > MAX_VIDEO_SIZE) {
-            return Result.fail("视频大小不能超过50MB");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "视频大小不能超过50MB");
         }
         String suffix = getValidatedVideoSuffix(video);
         if (suffix == null) {
-            return Result.fail("只支持 mp4、webm、mov 视频");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "只支持 mp4、webm、mov 视频");
         }
         try {
             String fileName = createNewMediaFileName("videos", suffix);
@@ -85,24 +87,24 @@ public class UploadController {
     @RequestMapping(value = "/blog/delete", method = {RequestMethod.GET, RequestMethod.DELETE})
     public Result deleteBlogImg(@RequestParam("name") String filename) {
         if (StrUtil.isBlank(filename)) {
-            return Result.fail("文件名不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "文件名不能为空");
         }
         try {
             Path target = resolveUploadPath(filename);
             Path root = uploadRoot();
             String relativePath = root.relativize(target).toString().replace("\\", "/");
             if (!relativePath.startsWith("blogs/")) {
-                return Result.fail("错误的文件路径");
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "错误的文件路径");
             }
             if (Files.isDirectory(target)) {
-                return Result.fail("错误的文件名称");
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "错误的文件名称");
             }
             Files.deleteIfExists(target);
             return Result.ok();
         } catch (IOException e) {
             throw new RuntimeException("文件删除失败", e);
         } catch (IllegalArgumentException e) {
-            return Result.fail(e.getMessage());
+            throw new BusinessException(ErrorCode.BAD_REQUEST, e.getMessage());
         }
     }
 

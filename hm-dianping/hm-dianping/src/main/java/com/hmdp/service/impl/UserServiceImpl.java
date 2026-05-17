@@ -9,6 +9,8 @@ import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
@@ -60,7 +62,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         //1.校验手机号
         if (RegexUtils.isPhoneInvalid(phone)) {
             //2.如果不符合，返回错误信息
-            return Result.fail("手机号格式错误！");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "手机号格式错误！");
         }
         //3.符合，生成验证码
         String code = RandomUtil.randomNumbers(6);
@@ -86,14 +88,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String phone = loginForm.getPhone();
         if (RegexUtils.isPhoneInvalid(phone)) {
             //1.2.如果不符合，返回错误信息
-            return Result.fail("手机号格式错误！");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "手机号格式错误！");
         }
         //2.校验验证码,从redis进行获取
         String cacheCode = stringRedisTemplate.opsForValue().get(RedisConstants.LOGIN_CODE_KEY+phone);
         String code = loginForm.getCode();
         if(cacheCode==null || !cacheCode.equals(code)){
             //3.不一致，报错
-            return Result.fail("验证码错误！");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "验证码错误！");
         }
         //4.一致，根据手机号查询用户
         User user = query().eq("phone", phone).one();

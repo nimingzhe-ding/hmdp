@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8081:8081"
+    environment:
+      HMDP_DATASOURCE_URL: "jdbc:mysql://mysql:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true"
+      HMDP_DATASOURCE_USERNAME: "root"
+      HMDP_DATASOURCE_PASSWORD: "root123"
+      HMDP_REDIS_HOST: "redis"
+      HMDP_REDIS_PORT: "6379"
+      HMDP_REDIS_PASSWORD: ""
+      HMDP_STORAGE_TYPE: "local"
+      HMDP_IMAGE_UPLOAD_DIR: "/data/imgs"
+    volumes:
+      - upload-data:/data/imgs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: "root123"
+      MYSQL_DATABASE: "hmdp"
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:
+  upload-data:

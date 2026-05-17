@@ -4,6 +4,7 @@ import com.hmdp.dto.ContentAiRequest;
 import com.hmdp.dto.ContentProfileUpdateRequest;
 import com.hmdp.dto.Result;
 import com.hmdp.service.IContentService;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,8 +31,10 @@ public class ContentController {
     public Result feed(
             @RequestParam(value = "channel", defaultValue = "hot") String channel,
             @RequestParam(value = "query", required = false) String query,
-            @RequestParam(value = "current", defaultValue = "1") Integer current) {
-        return contentService.feed(channel, query, current);
+            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam(value = "x", required = false) Double x,
+            @RequestParam(value = "y", required = false) Double y) {
+        return contentService.feed(channel, query, current, x, y);
     }
 
     @GetMapping("/search")
@@ -114,6 +117,31 @@ public class ContentController {
     @GetMapping("/trends")
     public Result trends() {
         return contentService.trends();
+    }
+
+    @GetMapping("/suggestions")
+    public Result suggestions(@RequestParam("prefix") String prefix) {
+        return contentService.suggestions(prefix);
+    }
+
+    @GetMapping("/search-history")
+    public Result searchHistory() {
+        return contentService.searchHistory();
+    }
+
+    @DeleteMapping("/search-history")
+    public Result deleteSearchHistory(@RequestParam("keyword") String keyword) {
+        return contentService.deleteSearchHistory(keyword);
+    }
+
+    @DeleteMapping("/search-history/all")
+    public Result clearSearchHistory() {
+        return contentService.clearSearchHistory();
+    }
+
+    @GetMapping("/hot-search")
+    public Result hotSearch() {
+        return contentService.hotSearch();
     }
 
     @PostMapping("/ai/recommend")

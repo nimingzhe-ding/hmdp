@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.entity.MallCategory;
 import com.hmdp.entity.MallFavorite;
 import com.hmdp.entity.MallLogistics;
@@ -101,16 +103,15 @@ public class MallCommerceController {
     @GetMapping("/addresses")
     public Result addresses() {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         return Result.ok(addressList(user.getId()));
     }
 
     @PostMapping("/addresses")
     public Result saveAddress(@RequestBody UserAddress address) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
-        Result check = checkAddress(address);
-        if (!Boolean.TRUE.equals(check.getSuccess())) return check;
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
+        checkAddress(address);
         LocalDateTime now = LocalDateTime.now();
         address.setId(null);
         address.setUserId(user.getId());
@@ -128,9 +129,9 @@ public class MallCommerceController {
     @PutMapping("/addresses/{id}")
     public Result updateAddress(@PathVariable("id") Long id, @RequestBody UserAddress address) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         UserAddress old = addressMapper().selectById(id);
-        if (old == null || !user.getId().equals(old.getUserId())) return Result.fail("地址不存在");
+        if (old == null || !user.getId().equals(old.getUserId())) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "地址不存在");
         if (StrUtil.isNotBlank(address.getReceiverName())) old.setReceiverName(address.getReceiverName());
         if (StrUtil.isNotBlank(address.getPhone())) old.setPhone(address.getPhone());
         if (address.getProvince() != null) old.setProvince(address.getProvince());
@@ -149,7 +150,7 @@ public class MallCommerceController {
     @DeleteMapping("/addresses/{id}")
     public Result deleteAddress(@PathVariable("id") Long id) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         addressMapper().delete(new LambdaQueryWrapper<UserAddress>()
                 .eq(UserAddress::getId, id)
                 .eq(UserAddress::getUserId, user.getId()));
@@ -159,9 +160,9 @@ public class MallCommerceController {
     @PostMapping("/addresses/{id}/default")
     public Result setDefaultAddress(@PathVariable("id") Long id) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         UserAddress address = addressMapper().selectById(id);
-        if (address == null || !user.getId().equals(address.getUserId())) return Result.fail("地址不存在");
+        if (address == null || !user.getId().equals(address.getUserId())) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "地址不存在");
         clearDefaultAddress(user.getId());
         address.setDefaultFlag(true);
         address.setUpdateTime(LocalDateTime.now());
@@ -172,7 +173,7 @@ public class MallCommerceController {
     @PostMapping("/favorites")
     public Result toggleFavorite(@RequestParam("targetType") String targetType, @RequestParam("targetId") Long targetId) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         String type = targetType.trim().toUpperCase();
         LambdaQueryWrapper<MallFavorite> wrapper = new LambdaQueryWrapper<MallFavorite>()
                 .eq(MallFavorite::getUserId, user.getId())
@@ -195,7 +196,7 @@ public class MallCommerceController {
     @GetMapping("/favorites")
     public Result favorites(@RequestParam(value = "targetType", required = false) String targetType) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         LambdaQueryWrapper<MallFavorite> wrapper = new LambdaQueryWrapper<MallFavorite>()
                 .eq(MallFavorite::getUserId, user.getId())
                 .orderByDesc(MallFavorite::getCreateTime);
@@ -208,18 +209,18 @@ public class MallCommerceController {
     @PostMapping("/products/{id}/reviews")
     public Result review(@PathVariable("id") Long productId, @RequestBody MallReview review) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         MallOrder order = orderService.getById(review.getOrderId());
         if (order == null || !user.getId().equals(order.getUserId()) || !productId.equals(order.getProductId())) {
-            return Result.fail("只能评价自己的订单商品");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "只能评价自己的订单商品");
         }
         if (order.getStatus() == null || order.getStatus() != MallOrderServiceImpl.STATUS_COMPLETED) {
-            return Result.fail("确认收货后才能评价");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "确认收货后才能评价");
         }
         if (reviewMapper.selectCount(new LambdaQueryWrapper<MallReview>()
                 .eq(MallReview::getOrderId, order.getId())
                 .eq(MallReview::getUserId, user.getId())) > 0) {
-            return Result.fail("该订单已评价");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "该订单已评价");
         }
         LocalDateTime now = LocalDateTime.now();
         review.setId(null);
@@ -248,9 +249,9 @@ public class MallCommerceController {
     @GetMapping("/orders/{id}/logistics")
     public Result logistics(@PathVariable("id") Long orderId) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         MallOrder order = orderService.getById(orderId);
-        if (order == null || !user.getId().equals(order.getUserId())) return Result.fail("订单不存在");
+        if (order == null || !user.getId().equals(order.getUserId())) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
         return Result.ok(logisticsMapper.selectOne(new LambdaQueryWrapper<MallLogistics>()
                 .eq(MallLogistics::getOrderId, orderId)
                 .last("limit 1")));
@@ -278,9 +279,9 @@ public class MallCommerceController {
     @GetMapping("/orders/{id}/refunds")
     public Result refunds(@PathVariable("id") Long orderId) {
         UserDTO user = currentUser();
-        if (user == null) return Result.fail("请先登录");
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         MallOrder order = orderService.getById(orderId);
-        if (order == null || !user.getId().equals(order.getUserId())) return Result.fail("订单不存在");
+        if (order == null || !user.getId().equals(order.getUserId())) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
         return Result.ok(refundMapper.selectList(new LambdaQueryWrapper<MallRefund>()
                 .eq(MallRefund::getOrderId, orderId)
                 .orderByDesc(MallRefund::getCreateTime)));
@@ -289,7 +290,7 @@ public class MallCommerceController {
     @GetMapping("/merchants/{id}")
     public Result merchantShop(@PathVariable("id") Long merchantId) {
         Merchant merchant = merchantService.getById(merchantId);
-        if (merchant == null) return Result.fail("商家不存在");
+        if (merchant == null) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "商家不存在");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("merchant", merchant);
         result.put("products", productService.query()
@@ -317,9 +318,9 @@ public class MallCommerceController {
     @PutMapping("/merchant/products/{id}/skus")
     public Result saveProductSkus(@PathVariable("id") Long productId, @RequestBody List<MallSku> skus) {
         Merchant merchant = currentMerchant();
-        if (merchant == null) return Result.fail("请先开通商家中心");
+        if (merchant == null) throw new BusinessException(ErrorCode.NO_PERMISSION, "请先开通商家中心");
         MallProduct product = productService.getById(productId);
-        if (product == null || !merchant.getId().equals(product.getMerchantId())) return Result.fail("商品不存在");
+        if (product == null || !merchant.getId().equals(product.getMerchantId())) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "商品不存在");
         skuMapper.delete(new LambdaQueryWrapper<MallSku>().eq(MallSku::getProductId, productId));
         LocalDateTime now = LocalDateTime.now();
         if (skus != null) {
@@ -341,13 +342,13 @@ public class MallCommerceController {
     @PostMapping("/merchant/promotions")
     public Result savePromotion(@RequestBody MallPromotion promotion) {
         Merchant merchant = currentMerchant();
-        if (merchant == null) return Result.fail("请先开通商家中心");
+        if (merchant == null) throw new BusinessException(ErrorCode.NO_PERMISSION, "请先开通商家中心");
         if (promotion == null || StrUtil.isBlank(promotion.getTitle()) || StrUtil.isBlank(promotion.getType())) {
-            return Result.fail("活动标题和类型不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "活动标题和类型不能为空");
         }
         if (promotion.getProductId() != null) {
             MallProduct product = productService.getById(promotion.getProductId());
-            if (product == null || !merchant.getId().equals(product.getMerchantId())) return Result.fail("商品不存在");
+            if (product == null || !merchant.getId().equals(product.getMerchantId())) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "商品不存在");
         }
         LocalDateTime now = LocalDateTime.now();
         promotion.setId(null);
@@ -366,9 +367,9 @@ public class MallCommerceController {
                                @RequestParam(value = "company", required = false) String company,
                                @RequestParam(value = "trackingNo", required = false) String trackingNo) {
         Merchant merchant = currentMerchant();
-        if (merchant == null) return Result.fail("请先开通商家中心");
+        if (merchant == null) throw new BusinessException(ErrorCode.NO_PERMISSION, "请先开通商家中心");
         MallOrder order = orderService.getById(orderId);
-        if (order == null || !merchant.getId().equals(order.getMerchantId())) return Result.fail("订单不存在");
+        if (order == null || !merchant.getId().equals(order.getMerchantId())) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
         LocalDateTime now = LocalDateTime.now();
         boolean updated = orderService.update()
                 .set("status", MallOrderServiceImpl.STATUS_SHIPPED)
@@ -380,7 +381,7 @@ public class MallCommerceController {
                 .eq("merchant_id", merchant.getId())
                 .eq("status", MallOrderServiceImpl.STATUS_PENDING_SHIP)
                 .update();
-        if (!updated) return Result.fail("当前订单状态不能发货");
+        if (!updated) throw new BusinessException(ErrorCode.OPERATION_FAIL, "当前订单状态不能发货");
         saveLogistics(order, company, trackingNo, "SHIPPED", now, null);
         notificationService.notifyUser(order.getUserId(), null, "ORDER_SHIPPED", "商家已发货",
                 "你购买的《" + order.getProductTitle() + "》已发货。", null, order.getId());
@@ -392,9 +393,9 @@ public class MallCommerceController {
                                @RequestParam("approve") Boolean approve,
                                @RequestParam(value = "remark", required = false) String remark) {
         Merchant merchant = currentMerchant();
-        if (merchant == null) return Result.fail("请先开通商家中心");
+        if (merchant == null) throw new BusinessException(ErrorCode.NO_PERMISSION, "请先开通商家中心");
         MallRefund refund = refundMapper.selectById(refundId);
-        if (refund == null || !merchant.getId().equals(refund.getMerchantId())) return Result.fail("售后单不存在");
+        if (refund == null || !merchant.getId().equals(refund.getMerchantId())) throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "售后单不存在");
         MallOrder order = orderService.getById(refund.getOrderId());
         LocalDateTime now = LocalDateTime.now();
         refund.setStatus(Boolean.TRUE.equals(approve) ? 1 : 2);
@@ -420,10 +421,10 @@ public class MallCommerceController {
     }
 
     private Result checkAddress(UserAddress address) {
-        if (address == null) return Result.fail("地址不能为空");
-        if (StrUtil.isBlank(address.getReceiverName())) return Result.fail("收货人不能为空");
-        if (StrUtil.isBlank(address.getPhone())) return Result.fail("手机号不能为空");
-        if (StrUtil.isBlank(address.getDetailAddress())) return Result.fail("详细地址不能为空");
+        if (address == null) throw new BusinessException(ErrorCode.PARAM_EMPTY, "地址不能为空");
+        if (StrUtil.isBlank(address.getReceiverName())) throw new BusinessException(ErrorCode.PARAM_EMPTY, "收货人不能为空");
+        if (StrUtil.isBlank(address.getPhone())) throw new BusinessException(ErrorCode.PARAM_EMPTY, "手机号不能为空");
+        if (StrUtil.isBlank(address.getDetailAddress())) throw new BusinessException(ErrorCode.PARAM_EMPTY, "详细地址不能为空");
         return Result.ok();
     }
 

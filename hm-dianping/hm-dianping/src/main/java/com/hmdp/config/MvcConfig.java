@@ -18,11 +18,22 @@ public class MvcConfig implements WebMvcConfigurer {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private RequestLoggingInterceptor requestLoggingInterceptor;
+    @Resource
+    private RateLimitInterceptor rateLimitInterceptor;
+
     @Value("${hmdp.upload.image-dir}")
     private String imageUploadDir;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        //请求日志拦截器（最先执行）
+        registry.addInterceptor(requestLoggingInterceptor)
+                .addPathPatterns("/**").order(-1);
+        //限流拦截器
+        registry.addInterceptor(rateLimitInterceptor)
+                .addPathPatterns("/user/code", "/user/login", "/upload/**").order(0);
         //登录拦截器
         registry.addInterceptor(new LoginInterceptor()).
                 excludePathPatterns(

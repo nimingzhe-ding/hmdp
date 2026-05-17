@@ -3,24 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>探店笔记</title>
-  <link rel="stylesheet" href="/assets/styles.css">
+  <title>标记生活 - 发现美好生活</title>
+  <!-- CSS modules -->
+  <link rel="stylesheet" href="/assets/css/base.css">
+  <link rel="stylesheet" href="/assets/css/layout.css">
+  <link rel="stylesheet" href="/assets/css/feed.css">
+  <link rel="stylesheet" href="/assets/css/detail.css">
+  <link rel="stylesheet" href="/assets/css/mall.css">
+  <link rel="stylesheet" href="/assets/css/video.css">
+  <link rel="stylesheet" href="/assets/css/dialogs.css">
+  <link rel="stylesheet" href="/assets/css/search.css">
+  <link rel="stylesheet" href="/assets/css/mobile.css">
 </head>
 <body>
   <div class="app-shell">
     <!-- 顶部主导航：品牌、搜索、登录发布入口 -->
     <header class="topbar">
-      <a class="brand" href="/" aria-label="探店笔记首页">
-        <span class="brand-name">探店笔记</span>
-      </a>
+      <div class="brand-group">
+        <a class="brand" href="/" aria-label="标记生活首页">
+          <span class="brand-name">标记生活</span>
+        </a>
+        <span class="brand-tagline">标记你的生活</span>
+      </div>
 
       <form class="search-box" id="searchForm" role="search">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M10.8 18.1a7.3 7.3 0 1 1 0-14.6 7.3 7.3 0 0 1 0 14.6Zm0-2a5.3 5.3 0 1 0 0-10.6 5.3 5.3 0 0 0 0 10.6Zm5.1.6 3.2 3.2-1.4 1.4-3.2-3.2 1.4-1.4Z"/>
         </svg>
-        <input id="searchInput" type="search" autocomplete="off" placeholder="搜索美食、咖啡、周末去处">
+        <input id="searchInput" type="search" autocomplete="off" placeholder="搜索笔记、探店、好物">
         <button type="submit">搜索</button>
         <div class="suggest-popover" id="suggestPopover"></div>
+        <div class="trend-list" id="trendList" hidden></div>
       </form>
 
       <div class="account-actions">
@@ -44,7 +57,18 @@
     <main class="main-layout">
       <!-- 中央内容区：频道筛选、AI 搜索推荐、瀑布流笔记 -->
       <section class="content-area" aria-label="笔记内容流">
-        <div class="topic-strip" id="categoryList"></div>
+        <div class="topic-strip" id="categoryList">
+          <button class="category-pill is-active" data-category="">推荐</button>
+          <button class="category-pill" data-category="fashion">穿搭</button>
+          <button class="category-pill" data-category="beauty">美妆</button>
+          <button class="category-pill" data-category="travel">旅行</button>
+          <button class="category-pill" data-category="home">家居</button>
+          <button class="category-pill" data-category="food">美食</button>
+          <button class="category-pill" data-category="explore">探店</button>
+          <button class="category-pill" data-category="trend">潮玩</button>
+          <button class="category-pill" data-category="sport">运动</button>
+          <button class="category-pill" data-category="reading">读书</button>
+        </div>
         <div class="status-banner" id="statusBanner" hidden></div>
         <section class="unified-search" id="unifiedSearch" hidden>
           <div class="unified-search-head">
@@ -77,6 +101,32 @@
           <div class="profile-home-tabs" id="profileHomeTabs"></div>
           <div class="profile-home-results" id="profileHomeResults"></div>
         </section>
+        <div class="discover-strip" id="discoverStrip">
+          <button class="discover-card" data-category="fashion">
+            <span class="discover-icon">👗</span>
+            <span class="discover-label">穿搭灵感</span>
+          </button>
+          <button class="discover-card" data-category="beauty">
+            <span class="discover-icon">💄</span>
+            <span class="discover-label">美妆护肤</span>
+          </button>
+          <button class="discover-card" data-category="travel">
+            <span class="discover-icon">✈️</span>
+            <span class="discover-label">旅行攻略</span>
+          </button>
+          <button class="discover-card" data-category="home">
+            <span class="discover-icon">🏠</span>
+            <span class="discover-label">家居好物</span>
+          </button>
+          <button class="discover-card" data-category="food">
+            <span class="discover-icon">🍜</span>
+            <span class="discover-label">美食探店</span>
+          </button>
+          <button class="discover-card" data-category="trend">
+            <span class="discover-icon">🎨</span>
+            <span class="discover-label">潮流玩具</span>
+          </button>
+        </div>
         <div class="masonry-feed" id="noteFeed" aria-live="polite"></div>
         <div class="feed-loading" id="feedLoading">正在加载更多笔记...</div>
       </section>
@@ -88,8 +138,8 @@
       <section class="mall-area" id="mallArea" aria-label="商城" hidden>
         <div class="mall-head">
           <div>
-            <strong>探店商城</strong>
-            <span>内容同款、探店套餐、创作装备</span>
+            <strong>好物商城</strong>
+            <span>发现生活好物，探索品质消费</span>
           </div>
           <div class="mall-actions">
             <button class="soft-button" id="openMerchantCenter" type="button">商家中心</button>
@@ -99,9 +149,11 @@
         </div>
         <div class="mall-tabs">
           <button class="category-pill is-active" data-mall-category="all">推荐</button>
-          <button class="category-pill" data-mall-category="food">美食套餐</button>
-          <button class="category-pill" data-mall-category="coffee">咖啡</button>
-          <button class="category-pill" data-mall-category="gear">装备</button>
+          <button class="category-pill" data-mall-category="food">精选美食</button>
+          <button class="category-pill" data-mall-category="beauty">美妆个护</button>
+          <button class="category-pill" data-mall-category="home">家居生活</button>
+          <button class="category-pill" data-mall-category="fashion">潮流装备</button>
+          <button class="category-pill" data-mall-category="travel">旅行出行</button>
         </div>
         <div class="product-grid" id="productGrid"></div>
       </section>
@@ -112,27 +164,22 @@
     <nav class="mobile-tabbar" aria-label="移动端导航">
       <button class="is-active" type="button" data-feed="hot">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2 3.4 10v10h6v-6h5.2v6h6V10L12 3.2Z"/></svg>
-        <span>发现</span>
-      </button>
-      <button type="button" data-feed="follow">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.2 10.7 20C5.8 15.6 2.6 12.7 2.6 9a5 5 0 0 1 8.7-3.4A5 5 0 0 1 20 9c0 3.7-3.2 6.6-8.1 11l-1.3 1.2Z"/></svg>
-        <span>关注</span>
-      </button>
-      <button type="button" data-feed="nearby">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8a7 7 0 0 1 7 7c0 5.2-7 11.4-7 11.4S5 15 5 9.8a7 7 0 0 1 7-7Zm0 2.8a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"/></svg>
-        <span>附近</span>
-      </button>
-      <button type="button" id="mobileVideo">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5-11-6.5Z"/></svg>
-        <span>视频</span>
+        <span>首页</span>
       </button>
       <button type="button" id="mobileMall">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12l-1 13H7L6 7Zm3-2a3 3 0 0 1 6 0h-2a1 1 0 0 0-2 0H9Z"/></svg>
         <span>商城</span>
       </button>
-      <button type="button" id="mobilePublish">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"/></svg>
-        <span>发布</span>
+      <button type="button" id="mobilePublish" class="mobile-publish-btn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#ff2442"/><path d="M11 7h2v10h-2zM7 11h10v2H7z" fill="#fff"/></svg>
+      </button>
+      <button type="button" id="openNotifications">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+        <span>消息</span>
+      </button>
+      <button type="button" id="mobileProfile">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        <span>我</span>
       </button>
     </nav>
   </div>
@@ -430,7 +477,7 @@
     <form method="dialog" class="login-form" id="loginForm">
       <div class="dialog-head">
         <h2>手机号登录</h2>
-        <button class="icon-button" value="cancel" aria-label="关闭登录弹窗">
+        <button class="icon-button" value="cancel" formnovalidate aria-label="关闭登录弹窗">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 10.6 4.6-4.6L18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6L7.4 18 6 16.6l4.6-4.6L6 7.4 7.4 6l4.6 4.6Z"/></svg>
         </button>
       </div>
@@ -452,6 +499,18 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="/assets/app.js"></script>
+  <!-- JS modules (load order matters: utils first, then features, then app last) -->
+  <script src="/assets/js/utils.js"></script>
+  <script src="/assets/js/auth.js"></script>
+  <script src="/assets/js/notifications.js"></script>
+  <script src="/assets/js/feed.js"></script>
+  <script src="/assets/js/comments.js"></script>
+  <script src="/assets/js/search.js"></script>
+  <script src="/assets/js/mall.js"></script>
+  <script src="/assets/js/video.js"></script>
+  <script src="/assets/js/detail.js"></script>
+  <script src="/assets/js/merchant.js"></script>
+  <script src="/assets/js/composer.js"></script>
+  <script src="/assets/js/app.js"></script>
 </body>
 </html>

@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.UserNotification;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.UserNotificationMapper;
 import com.hmdp.service.IUserNotificationService;
 import com.hmdp.utils.UserHolder;
@@ -43,7 +45,7 @@ public class UserNotificationServiceImpl extends ServiceImpl<UserNotificationMap
     public Result listMine(Boolean unreadOnly) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         return Result.ok(query()
                 .eq("user_id", user.getId())
@@ -69,7 +71,7 @@ public class UserNotificationServiceImpl extends ServiceImpl<UserNotificationMap
     public Result markAllRead() {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         update()
                 .set("read_flag", true)
@@ -83,7 +85,7 @@ public class UserNotificationServiceImpl extends ServiceImpl<UserNotificationMap
     public Result markRead(Long id) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         update()
                 .set("read_flag", true)
@@ -97,7 +99,7 @@ public class UserNotificationServiceImpl extends ServiceImpl<UserNotificationMap
     public Result deleteOne(Long id) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         remove(query().eq("id", id).eq("user_id", user.getId()).getWrapper());
         return Result.ok();

@@ -1,0 +1,12 @@
+package com.hmdp.exception;
+
+import com.hmdp.enums.ErrorCode;
+
+/**
+ * 未登录异常，对应 HTTP 401。
+ */
+public class UnauthorizedException extends BusinessException {
+    public UnauthorizedException() {
+        super(ErrorCode.UNAUTHORIZED);
+    }
+}

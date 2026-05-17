@@ -5,6 +5,8 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
@@ -49,6 +51,21 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private static final String ORDER_STREAM_KEY = "stream.orders";
 
     /**
+     * 死信队列：超过最大重试次数的消息移入此流，供人工排查或告警。
+     */
+    private static final String DLQ_STREAM_KEY = "stream.orders.dlq";
+
+    /**
+     * 重试计数 key 前缀：stream.orders:retry:{recordId}
+     */
+    private static final String RETRY_KEY_PREFIX = "stream.orders:retry:";
+
+    /**
+     * 最大重试次数。超过后移入 DLQ 并回滚库存。
+     */
+    private static final int MAX_RETRY = 3;
+
+    /**
      * 订单消费者组。
      * 消费成功后 ACK；异常未 ACK 的消息会留在 pending-list，后台线程会继续补偿处理。
      */
@@ -84,6 +101,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @PostConstruct
     private void init() {
         initOrderStreamGroup();
+        initDlqStream();
         seckillOrderExecutor.submit(new VoucherOrderHandler());
     }
 
@@ -96,22 +114,22 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     public Result seckillVoucher(Long voucherId) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         if (voucherId == null) {
-            return Result.fail("优惠券ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "优惠券ID不能为空");
         }
 
         SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
         if (voucher == null) {
-            return Result.fail("秒杀券不存在");
+            throw new BusinessException(ErrorCode.VOUCHER_NOT_EXIST);
         }
         LocalDateTime now = LocalDateTime.now();
         if (voucher.getBeginTime() != null && voucher.getBeginTime().isAfter(now)) {
-            return Result.fail("秒杀尚未开始");
+            throw new BusinessException(ErrorCode.SECKILL_NOT_START);
         }
         if (voucher.getEndTime() != null && voucher.getEndTime().isBefore(now)) {
-            return Result.fail("秒杀已经结束");
+            throw new BusinessException(ErrorCode.SECKILL_ENDED);
         }
 
         Long userId = user.getId();
@@ -124,12 +142,16 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 String.valueOf(orderId)
         );
         if (result == null) {
-            return Result.fail("秒杀服务繁忙，请稍后重试");
+            throw new BusinessException(ErrorCode.SERVER_BUSY);
         }
 
         int code = result.intValue();
         if (code != 0) {
-            return Result.fail(code == 1 ? "库存不足" : "不能重复下单");
+            if (code == 1) {
+                throw new BusinessException(ErrorCode.STOCK_NOT_ENOUGH);
+            } else {
+                throw new BusinessException(ErrorCode.REPEAT_OPERATION, "不能重复下单");
+            }
         }
 
         return Result.ok(orderId);
@@ -208,7 +230,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         try {
             Boolean exists = stringRedisTemplate.hasKey(ORDER_STREAM_KEY);
             if (!Boolean.TRUE.equals(exists)) {
-                // Redis Stream 必须先有 key 才能创建消费者组，这条 init 消息不会进入业务订单处理。
                 stringRedisTemplate.opsForStream().add(ORDER_STREAM_KEY, Map.of("init", "1"));
             }
             stringRedisTemplate.opsForStream().createGroup(ORDER_STREAM_KEY, ReadOffset.latest(), ORDER_GROUP);
@@ -216,6 +237,27 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             if (e.getMessage() == null || !e.getMessage().contains("BUSYGROUP")) {
                 throw e;
             }
+        }
+    }
+
+    private void initDlqStream() {
+        try {
+            Boolean exists = stringRedisTemplate.hasKey(DLQ_STREAM_KEY);
+            if (!Boolean.TRUE.equals(exists)) {
+                stringRedisTemplate.opsForStream().add(DLQ_STREAM_KEY, Map.of("init", "1"));
+            }
+        } catch (Exception e) {
+            log.warn("初始化DLQ流失败", e);
+        }
+    }
+
+    private void moveToDlq(MapRecord<String, Object, Object> record) {
+        try {
+            Map<Object, Object> values = record.getValue();
+            stringRedisTemplate.opsForStream().add(DLQ_STREAM_KEY, values);
+            log.warn("消息已移入DLQ: recordId={}, data={}", record.getId().getValue(), values);
+        } catch (Exception e) {
+            log.error("移入DLQ失败: recordId={}", record.getId().getValue(), e);
         }
     }
 
@@ -269,8 +311,25 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                         break;
                     }
                     for (MapRecord<String, Object, Object> record : records) {
-                        handleVoucherOrder(toVoucherOrder(record));
-                        ackOrder(record);
+                        String recordId = record.getId().getValue();
+                        String retryKey = RETRY_KEY_PREFIX + recordId;
+                        Long retryCount = stringRedisTemplate.opsForValue().increment(retryKey);
+                        if (retryCount != null) {
+                            stringRedisTemplate.expire(retryKey, java.time.Duration.ofHours(1));
+                        }
+
+                        if (retryCount != null && retryCount > MAX_RETRY) {
+                            // 超过最大重试次数，移入死信队列并回滚库存
+                            log.error("订单消息超过最大重试次数，移入DLQ: recordId={}, retryCount={}", recordId, retryCount);
+                            moveToDlq(record);
+                            VoucherOrder order = toVoucherOrder(record);
+                            rollbackSeckill(order.getVoucherId(), order.getUserId());
+                            ackOrder(record);
+                            stringRedisTemplate.delete(retryKey);
+                        } else {
+                            handleVoucherOrder(toVoucherOrder(record));
+                            ackOrder(record);
+                        }
                     }
                 } catch (Exception e) {
                     log.error("处理 pending-list 订单异常，稍后重试", e);

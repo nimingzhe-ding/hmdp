@@ -6,6 +6,8 @@ import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.VideoPlayMetric;
 import com.hmdp.enums.ContentType;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.VideoPlayMetricMapper;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IVideoPlayMetricService;
@@ -28,11 +30,11 @@ public class VideoPlayMetricServiceImpl extends ServiceImpl<VideoPlayMetricMappe
     @Override
     public Result report(VideoPlayMetric metric) {
         if (metric == null || metric.getBlogId() == null) {
-            return Result.fail("视频ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "视频ID不能为空");
         }
         Blog blog = blogService.getById(metric.getBlogId());
         if (blog == null || !ContentType.supportsDanmaku(blog.getContentType(), blog.getVideoUrl())) {
-            return Result.fail("视频内容不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "视频内容不存在");
         }
         UserDTO user = UserHolder.getUser();
         int duration = positive(metric.getDurationSecond());

@@ -13,6 +13,8 @@ import com.hmdp.entity.MallOrder;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.Merchant;
 import com.hmdp.entity.MerchantNotification;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.entity.Voucher;
 import com.hmdp.mapper.MerchantMapper;
 import com.hmdp.mapper.MerchantNotificationMapper;
@@ -65,10 +67,10 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result apply(MerchantRequest request) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         if (request == null || StrUtil.isBlank(request.getName())) {
-            return Result.fail("店铺名称不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "店铺名称不能为空");
         }
         Merchant merchant = query().eq("user_id", user.getId()).one();
         if (merchant == null) {
@@ -89,7 +91,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result saveProduct(MerchantProductRequest request) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         Result check = checkProduct(request);
         if (!Boolean.TRUE.equals(check.getSuccess())) {
@@ -124,14 +126,14 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result updateProduct(Long productId, MerchantProductRequest request) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         MallProduct product = productService.getById(productId);
         if (product == null || !merchant.getId().equals(product.getMerchantId())) {
-            return Result.fail("商品不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "商品不存在");
         }
         if (request == null) {
-            return Result.fail("商品参数不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "商品参数不能为空");
         }
         LocalDateTime now = LocalDateTime.now();
         if (StrUtil.isNotBlank(request.getTitle())) product.setTitle(request.getTitle());
@@ -154,14 +156,14 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result updateProductStatus(Long productId, Integer status) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         if (status == null || (status != 0 && status != 1)) {
-            return Result.fail("状态值不合法，0=下架 1=上架");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "状态值不合法，0=下架 1=上架");
         }
         MallProduct product = productService.getById(productId);
         if (product == null || !merchant.getId().equals(product.getMerchantId())) {
-            return Result.fail("商品不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "商品不存在");
         }
         LocalDateTime now = LocalDateTime.now();
         boolean updated = productService.update()
@@ -171,7 +173,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                 .eq("merchant_id", merchant.getId())
                 .update();
         if (!updated) {
-            return Result.fail("操作失败");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL);
         }
         return Result.ok(status == 1 ? "已上架" : "已下架");
     }
@@ -180,14 +182,14 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result adjustStock(Long productId, Integer delta) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         if (delta == null || delta == 0) {
-            return Result.fail("调整数量不能为0");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "调整数量不能为0");
         }
         MallProduct product = productService.getById(productId);
         if (product == null || !merchant.getId().equals(product.getMerchantId())) {
-            return Result.fail("商品不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "商品不存在");
         }
         LocalDateTime now = LocalDateTime.now();
         boolean updated = productService.update()
@@ -197,7 +199,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                 .eq("merchant_id", merchant.getId())
                 .update();
         if (!updated) {
-            return Result.fail("调整库存失败");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "调整库存失败");
         }
         return Result.ok("库存已调整");
     }
@@ -206,7 +208,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result myProducts(Integer status) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         LambdaQueryWrapper<MallProduct> wrapper = new LambdaQueryWrapper<MallProduct>()
                 .eq(MallProduct::getMerchantId, merchant.getId())
@@ -223,7 +225,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result myOrders(Integer status) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         LambdaQueryWrapper<MallOrder> wrapper = new LambdaQueryWrapper<MallOrder>()
                 .eq(MallOrder::getMerchantId, merchant.getId())
@@ -238,11 +240,11 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result shipOrder(Long orderId) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         MallOrder order = orderService.getById(orderId);
         if (order == null || !merchant.getId().equals(order.getMerchantId())) {
-            return Result.fail("订单不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
         }
         LocalDateTime now = LocalDateTime.now();
         boolean updated = orderService.update()
@@ -258,7 +260,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                     "你购买的「" + order.getProductTitle() + "」已发货。", null, order.getId());
         }
         if (!updated) {
-            return Result.fail("当前订单状态不能发货");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "当前订单状态不能发货");
         }
         return Result.ok("已发货");
     }
@@ -268,14 +270,14 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result handleRefund(Long orderId, boolean approve) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         MallOrder order = orderService.getById(orderId);
         if (order == null || !merchant.getId().equals(order.getMerchantId())) {
-            return Result.fail("订单不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "订单不存在");
         }
         if (order.getStatus() != MallOrderServiceImpl.STATUS_REFUNDING) {
-            return Result.fail("该订单不在退款中");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "该订单不在退款中");
         }
         LocalDateTime now = LocalDateTime.now();
         if (approve) {
@@ -304,7 +306,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                     .eq("status", MallOrderServiceImpl.STATUS_REFUNDING)
                     .update();
             if (!updated) {
-                return Result.fail("操作失败");
+                throw new BusinessException(ErrorCode.OPERATION_FAIL);
             }
             userNotificationService.notifyUser(order.getUserId(), null, "ORDER_REFUND_REJECTED", "退款被拒绝",
                     "你购买的「" + order.getProductTitle() + "」的退款申请已被商家拒绝。", null, order.getId());
@@ -318,7 +320,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result createVoucher(MerchantVoucherRequest request) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         Result check = checkVoucher(request);
         if (!Boolean.TRUE.equals(check.getSuccess())) {
@@ -327,7 +329,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
         if (request.getProductId() != null) {
             MallProduct product = productService.getById(request.getProductId());
             if (product == null || !merchant.getId().equals(product.getMerchantId())) {
-                return Result.fail("只能给自己的商品发券");
+                throw new BusinessException(ErrorCode.NO_PERMISSION, "只能给自己的商品发券");
             }
         }
         LocalDateTime now = LocalDateTime.now();
@@ -354,14 +356,14 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result updateVoucher(Long voucherId, MerchantVoucherRequest request) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         Voucher voucher = voucherService.getById(voucherId);
         if (voucher == null || !merchant.getId().equals(voucher.getMerchantId())) {
-            return Result.fail("优惠券不存在");
+            throw new BusinessException(ErrorCode.VOUCHER_NOT_EXIST);
         }
         if (request == null) {
-            return Result.fail("优惠券参数不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "优惠券参数不能为空");
         }
         LocalDateTime now = LocalDateTime.now();
         if (StrUtil.isNotBlank(request.getTitle())) voucher.setTitle(request.getTitle());
@@ -381,14 +383,14 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result updateVoucherStatus(Long voucherId, Integer status) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         if (status == null || (status != 0 && status != 1)) {
-            return Result.fail("状态值不合法，0=下架 1=上架");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "状态值不合法，0=下架 1=上架");
         }
         Voucher voucher = voucherService.getById(voucherId);
         if (voucher == null || !merchant.getId().equals(voucher.getMerchantId())) {
-            return Result.fail("优惠券不存在");
+            throw new BusinessException(ErrorCode.VOUCHER_NOT_EXIST);
         }
         LocalDateTime now = LocalDateTime.now();
         boolean updated = voucherService.update()
@@ -398,7 +400,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
                 .eq("merchant_id", merchant.getId())
                 .update();
         if (!updated) {
-            return Result.fail("操作失败");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL);
         }
         return Result.ok(status == 1 ? "已上架" : "已下架");
     }
@@ -407,7 +409,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result myVouchers(Integer status) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         LambdaQueryWrapper<Voucher> wrapper = new LambdaQueryWrapper<Voucher>()
                 .eq(Voucher::getMerchantId, merchant.getId())
@@ -424,7 +426,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result notifications(Integer readFlag) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         LambdaQueryWrapper<MerchantNotification> wrapper = new LambdaQueryWrapper<MerchantNotification>()
                 .eq(MerchantNotification::getMerchantId, merchant.getId())
@@ -439,7 +441,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result markNotificationsRead() {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         notificationMapper.update(
                 new MerchantNotification().setReadFlag(true),
@@ -456,7 +458,7 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
     public Result dashboard() {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         Long merchantId = merchant.getId();
         MerchantDashboardDTO dto = new MerchantDashboardDTO();
@@ -545,29 +547,29 @@ public class MerchantServiceImpl extends ServiceImpl<MerchantMapper, Merchant> i
 
     private Result checkProduct(MerchantProductRequest request) {
         if (request == null) {
-            return Result.fail("商品参数不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "商品参数不能为空");
         }
         if (StrUtil.isBlank(request.getTitle())) {
-            return Result.fail("商品标题不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "商品标题不能为空");
         }
         if (request.getPrice() == null || request.getPrice() <= 0) {
-            return Result.fail("商品价格必须大于0");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "商品价格必须大于0");
         }
         if (request.getStock() == null || request.getStock() < 0) {
-            return Result.fail("库存不能小于0");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "库存不能小于0");
         }
         return Result.ok();
     }
 
     private Result checkVoucher(MerchantVoucherRequest request) {
         if (request == null || StrUtil.isBlank(request.getTitle())) {
-            return Result.fail("优惠券标题不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "优惠券标题不能为空");
         }
         if (request.getPayValue() == null || request.getPayValue() < 0) {
-            return Result.fail("优惠金额不正确");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "优惠金额不正确");
         }
         if (request.getActualValue() == null || request.getActualValue() <= 0) {
-            return Result.fail("抵扣金额必须大于0");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "抵扣金额必须大于0");
         }
         return Result.ok();
     }

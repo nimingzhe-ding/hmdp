@@ -1,0 +1,129 @@
+:root {
+  /* ── 颜色 ── */
+  --bg: #fff;
+  --bg-page: #fff;
+  --surface: #fff;
+  --surface-soft: #f7f7f8;
+  --surface-hover: #f2f2f3;
+  --surface-warm: #fff6f7;
+  --text: #121212;
+  --text-secondary: #333;
+  --text-tertiary: #999;
+  --muted: #8a8a8f;
+  --line: #ebebed;
+  --line-strong: #dddde0;
+
+  --accent: #ff2442;
+  --accent-dark: #e61c34;
+  --accent-soft: #fff0f2;
+  --accent-light: #fff5f6;
+
+  --success: #00c853;
+  --success-soft: #e8f5e9;
+  --warning: #ff9800;
+  --warning-soft: #fff3e0;
+  --info: #2196f3;
+  --info-soft: #e3f2fd;
+  --danger: #ff2442;
+
+  --overlay: rgba(0, 0, 0, .48);
+  --overlay-heavy: rgba(0, 0, 0, .62);
+
+  /* ── 间距 ── */
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-md: 12px;
+  --sp-lg: 16px;
+  --sp-xl: 24px;
+  --sp-2xl: 32px;
+  --sp-3xl: 48px;
+
+  /* ── 字号 ── */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-base: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 17px;
+  --fs-2xl: 20px;
+  --fs-3xl: 24px;
+
+  /* ── 圆角 ── */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* ── 阴影 ── */
+  --shadow-xs: 0 1px 4px rgba(20, 20, 20, .04);
+  --shadow-soft: 0 4px 20px rgba(20, 20, 20, .06);
+  --shadow-float: 0 12px 48px rgba(20, 20, 20, .12);
+  --shadow-accent: 0 8px 20px rgba(255, 36, 66, .20);
+  --shadow-card-hover: 0 8px 28px rgba(20, 20, 20, .10);
+  --shadow-glow: 0 0 20px rgba(255, 36, 66, .10);
+
+  /* ── 动画 ── */
+  --ease-out: cubic-bezier(.22, .68, 0, 1.02);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-smooth: cubic-bezier(.4, 0, .2, 1);
+  --dur-fast: 150ms;
+  --dur-normal: 250ms;
+  --dur-slow: 400ms;
+  --dur-slower: 600ms;
+
+  /* ── 层级 ── */
+  --z-sticky: 20;
+  --z-dropdown: 40;
+  --z-modal-backdrop: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+}
+
+/* Base reset and shared primitives */
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: rgba(255, 36, 66, .15);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+img {
+  max-width: 100%;
+}

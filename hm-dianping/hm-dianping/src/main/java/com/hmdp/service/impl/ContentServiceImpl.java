@@ -29,6 +29,9 @@ import com.hmdp.entity.User;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.entity.Voucher;
 import com.hmdp.enums.ContentType;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
+import com.hmdp.enums.EventType;
 import com.hmdp.mapper.BlogLikeMapper;
 import com.hmdp.mapper.BlogProductMapper;
 import com.hmdp.mapper.ContentTopicMapper;
@@ -37,11 +40,13 @@ import com.hmdp.service.IBlogCollectService;
 import com.hmdp.service.IBlogService;
 import com.hmdp.service.IContentService;
 import com.hmdp.service.IFollowService;
+import com.hmdp.service.INoteEventService;
 import com.hmdp.service.IMallProductService;
 import com.hmdp.service.IShopService;
 import com.hmdp.service.IUserInfoService;
 import com.hmdp.service.IUserService;
 import com.hmdp.service.IVoucherService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -108,10 +113,13 @@ public class ContentServiceImpl implements IContentService {
     @Resource
     private AiAssistantService aiAssistantService;
 
+    @Resource
+    private INoteEventService noteEventService;
+
     @Override
-    public Result feed(String channel, String query, Integer current) {
+    public Result feed(String channel, String query, Integer current, Double x, Double y) {
         int pageNo = normalizePage(current);
-        Page<Blog> page = buildFeedQuery(channel, query, pageNo);
+        Page<Blog> page = buildFeedQuery(channel, query, pageNo, x, y);
         return Result.ok(toFeedResult(page, query));
     }
 
@@ -119,10 +127,11 @@ public class ContentServiceImpl implements IContentService {
     public Result search(String query, Integer current) {
         String keyword = StrUtil.trim(query);
         if (StrUtil.isBlank(keyword)) {
-            return Result.fail("搜索词不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "搜索词不能为空");
         }
+        saveSearchHistory(UserHolder.getUser(), keyword);
         int pageNo = normalizePage(current);
-        Page<Blog> notePage = buildFeedQuery("hot", keyword, pageNo);
+        Page<Blog> notePage = buildFeedQuery("hot", keyword, pageNo, null, null);
         List<ContentNoteDTO> notes = toNoteDTOs(notePage.getRecords());
         List<ContentNoteDTO> videos = notes.stream()
                 .filter(this::isVideoNote)
@@ -141,15 +150,19 @@ public class ContentServiceImpl implements IContentService {
     @Override
     public Result detail(Long blogId) {
         if (blogId == null) {
-            return Result.fail("笔记ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "笔记ID不能为空");
         }
         Blog blog = blogService.getById(blogId);
         if (blog == null) {
-            return Result.fail("笔记不存在");
+            throw new BusinessException(ErrorCode.BLOG_NOT_EXIST);
         }
         ContentNoteDTO note = toNoteDTO(blog);
         note.setCreatorGrowth(buildCreatorGrowth(blog.getUserId()));
         note.setRelatedNotes(findRelatedNotes(blog));
+        UserDTO user = UserHolder.getUser();
+        if (user != null) {
+            noteEventService.track(user.getId(), blogId, EventType.DETAIL, null, null);
+        }
         return Result.ok(note);
     }
 
@@ -157,7 +170,7 @@ public class ContentServiceImpl implements IContentService {
     public Result mine(Integer current) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         return userNotes(user.getId(), current);
     }
@@ -166,7 +179,7 @@ public class ContentServiceImpl implements IContentService {
     public Result collections(Integer current) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         return userCollections(user.getId(), current);
     }
@@ -175,7 +188,7 @@ public class ContentServiceImpl implements IContentService {
     public Result liked(Integer current) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         return userLiked(user.getId(), current);
     }
@@ -183,7 +196,7 @@ public class ContentServiceImpl implements IContentService {
     @Override
     public Result userNotes(Long userId, Integer current) {
         if (userId == null) {
-            return Result.fail("用户ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "用户ID不能为空");
         }
         int pageNo = normalizePage(current);
         Page<Blog> page = blogService.query()
@@ -196,7 +209,7 @@ public class ContentServiceImpl implements IContentService {
     @Override
     public Result userCollections(Long userId, Integer current) {
         if (userId == null) {
-            return Result.fail("用户ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "用户ID不能为空");
         }
         int pageNo = normalizePage(current);
         Page<BlogCollect> collectPage = blogCollectService.query()
@@ -214,7 +227,7 @@ public class ContentServiceImpl implements IContentService {
     @Override
     public Result userLiked(Long userId, Integer current) {
         if (userId == null) {
-            return Result.fail("用户ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "用户ID不能为空");
         }
         List<Long> likedBlogIds = findLikedBlogIds(userId);
         int pageNo = normalizePage(current);
@@ -228,7 +241,7 @@ public class ContentServiceImpl implements IContentService {
     @Override
     public Result following(Long userId, Integer current) {
         if (userId == null) {
-            return Result.fail("用户ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "用户ID不能为空");
         }
         int pageNo = normalizePage(current);
         Page<Follow> page = followService.query()
@@ -244,7 +257,7 @@ public class ContentServiceImpl implements IContentService {
     @Override
     public Result followers(Long userId, Integer current) {
         if (userId == null) {
-            return Result.fail("用户ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "用户ID不能为空");
         }
         int pageNo = normalizePage(current);
         Page<Follow> page = followService.query()
@@ -265,11 +278,11 @@ public class ContentServiceImpl implements IContentService {
             targetUserId = currentUser.getId();
         }
         if (targetUserId == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         User user = userService.getById(targetUserId);
         if (user == null) {
-            return Result.fail("用户不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "用户不存在");
         }
         ContentProfileDTO profile = new ContentProfileDTO();
         profile.setUserId(user.getId());
@@ -296,14 +309,14 @@ public class ContentServiceImpl implements IContentService {
     public Result updateProfile(ContentProfileUpdateRequest request) {
         UserDTO currentUser = UserHolder.getUser();
         if (currentUser == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         if (request == null) {
-            return Result.fail("资料不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "资料不能为空");
         }
         User user = userService.getById(currentUser.getId());
         if (user == null) {
-            return Result.fail("用户不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "用户不存在");
         }
         String nickName = StrUtil.trim(request.getNickName());
         String icon = StrUtil.trim(request.getIcon());
@@ -390,7 +403,7 @@ public class ContentServiceImpl implements IContentService {
     public Result aiRecommend(ContentAiRequest request) {
         String query = request == null ? "" : StrUtil.trim(request.getQuery());
         if (StrUtil.isBlank(query)) {
-            return Result.fail("推荐问题不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "推荐问题不能为空");
         }
         AiChatRequest aiRequest = toAiChatRequest(request, buildRecommendPrompt(query));
         return safeAiQuery(aiRequest, "可以先看看「" + query + "」相关笔记，按热度和收藏数挑选更稳。");
@@ -399,7 +412,7 @@ public class ContentServiceImpl implements IContentService {
     @Override
     public Result aiNoteSummary(ContentAiRequest request) {
         if (request == null) {
-            return Result.fail("笔记内容不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "笔记内容不能为空");
         }
         String title = StrUtil.blankToDefault(StrUtil.trim(request.getTitle()), "未命名笔记");
         String content = StrUtil.trim(request.getContent());
@@ -411,7 +424,7 @@ public class ContentServiceImpl implements IContentService {
             }
         }
         if (StrUtil.isBlank(content)) {
-            return Result.fail("笔记内容不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "笔记内容不能为空");
         }
         AiChatRequest aiRequest = toAiChatRequest(request, buildNoteSummaryPrompt(title, content));
         return safeAiQuery(aiRequest, "这篇笔记可以重点看标题、图片和评论反馈；智能看点暂时不可用。");
@@ -422,18 +435,53 @@ public class ContentServiceImpl implements IContentService {
      * hot 使用互动热度 + 新鲜度排序；follow 只看关注作者；nearby 先复用内容搜索，
      * 后续接入店铺坐标或 Redis GEO 后可以在这里替换为真正的附近推荐。
      */
-    private Page<Blog> buildFeedQuery(String channel, String query, int pageNo) {
+    private Page<Blog> buildFeedQuery(String channel, String query, int pageNo, Double x, Double y) {
         String normalizedChannel = StrUtil.blankToDefault(channel, "hot");
         Page<Blog> page = new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE);
         var wrapper = blogService.query();
         if (StrUtil.isNotBlank(query)) {
             wrapper.and(w -> w.like("title", query).or().like("content", query).or().like("tags", query));
         }
+        // 个性化推荐：基于用户兴趣画像
+        if ("recommend".equals(normalizedChannel)) {
+            UserDTO user = UserHolder.getUser();
+            if (user != null) {
+                String interestKey = RedisConstants.USER_INTEREST_KEY + user.getId();
+                Set<String> topTags = stringRedisTemplate.opsForZSet().reverseRange(interestKey, 0, 4);
+                if (topTags != null && !topTags.isEmpty()) {
+                    wrapper.and(w -> {
+                        boolean[] first = {true};
+                        for (String tag : topTags) {
+                            if (!first[0]) w.or();
+                            w.like("tags", tag);
+                            first[0] = false;
+                        }
+                    });
+                }
+            }
+            // 推荐频道使用热度排序
+            wrapper.last("ORDER BY (IFNULL(liked, 0) * 3 + IFNULL(comments, 0) * 2 + " +
+                    "(SELECT COUNT(1) FROM tb_blog_collect c WHERE c.blog_id = tb_blog.id) * 4 + " +
+                    "GREATEST(0, 72 - TIMESTAMPDIFF(HOUR, create_time, NOW()))) DESC, create_time DESC");
+            return wrapper.page(page);
+        }
         if ("follow".equals(normalizedChannel)) {
             UserDTO user = UserHolder.getUser();
             if (user == null) {
                 return new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE);
             }
+            // 优先从 Redis 收件箱读取（BlogServiceImpl.saveBlog 已在写入）
+            String feedKey = RedisConstants.FEED_KEY + user.getId();
+            long start = (long) (pageNo - 1) * SystemConstants.MAX_PAGE_SIZE;
+            long end = (long) pageNo * SystemConstants.MAX_PAGE_SIZE - 1;
+            Set<String> feedIds = stringRedisTemplate.opsForZSet().reverseRange(feedKey, start, end);
+            if (feedIds != null && !feedIds.isEmpty()) {
+                List<Long> blogIds = feedIds.stream().map(Long::parseLong).toList();
+                wrapper.in("id", blogIds);
+                wrapper.last("ORDER BY FIELD(id, " + String.join(",", feedIds) + ")");
+                return wrapper.page(page);
+            }
+            // 回退到 DB 查询关注列表
             List<Long> followUserIds = followService.query()
                     .eq("user_id", user.getId())
                     .list()
@@ -456,6 +504,7 @@ public class ContentServiceImpl implements IContentService {
         if ("hot".equals(normalizedChannel)) {
             wrapper.last("ORDER BY (IFNULL(liked, 0) * 3 + IFNULL(comments, 0) * 2 + " +
                     "(SELECT COUNT(1) FROM tb_blog_collect c WHERE c.blog_id = tb_blog.id) * 4 + " +
+                    "(SELECT COUNT(1) FROM tb_mall_order o WHERE o.product_id IN (SELECT bp.product_id FROM tb_blog_product bp WHERE bp.blog_id = tb_blog.id) AND o.status IN (2,3,4,5)) * 8 + " +
                     "GREATEST(0, 72 - TIMESTAMPDIFF(HOUR, create_time, NOW()))) DESC, create_time DESC");
         } else if ("video".equals(normalizedChannel)) {
             wrapper.last("ORDER BY (IFNULL(liked, 0) * 4 + IFNULL(comments, 0) * 3 + " +
@@ -464,7 +513,18 @@ public class ContentServiceImpl implements IContentService {
                     "(SELECT COUNT(1) FROM tb_mall_order o WHERE o.product_id IN (SELECT bp.product_id FROM tb_blog_product bp WHERE bp.blog_id = tb_blog.id) AND o.status IN (2,3,4,5)) * 8 + " +
                     "GREATEST(0, 48 - TIMESTAMPDIFF(HOUR, create_time, NOW()))) DESC, create_time DESC");
         } else if ("nearby".equals(normalizedChannel)) {
-            wrapper.last("ORDER BY CASE WHEN shop_id IS NULL THEN 1 ELSE 0 END ASC, create_time DESC");
+            if (x != null && y != null) {
+                List<Long> nearbyShopIds = findNearbyShopIds(x, y, 5000);
+                if (!nearbyShopIds.isEmpty()) {
+                    wrapper.in("shop_id", nearbyShopIds);
+                    wrapper.last("ORDER BY (IFNULL(liked, 0) * 3 + IFNULL(comments, 0) * 2 + " +
+                            "GREATEST(0, 72 - TIMESTAMPDIFF(HOUR, create_time, NOW()))) DESC, create_time DESC");
+                } else {
+                    return new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE);
+                }
+            } else {
+                wrapper.last("ORDER BY CASE WHEN shop_id IS NULL THEN 1 ELSE 0 END ASC, create_time DESC");
+            }
         } else {
             wrapper.orderByDesc("create_time");
         }
@@ -529,6 +589,7 @@ public class ContentServiceImpl implements IContentService {
     }
 
     private List<MallProduct> searchProducts(String keyword, int pageNo) {
+        String escaped = keyword.replace("'", "''").replace("%", "\\%").replace("_", "\\_");
         return mallProductService.query()
                 .eq("status", 1)
                 .and(wrapper -> wrapper.like("title", keyword)
@@ -536,8 +597,14 @@ public class ContentServiceImpl implements IContentService {
                         .like("sub_title", keyword)
                         .or()
                         .like("category", keyword))
-                .orderByDesc("sold")
-                .orderByDesc("create_time")
+                .last("ORDER BY ("
+                        + "LN(IFNULL(sold,0) + 1) * 10"
+                        + " + GREATEST(0, 30 - IFNULL(price,0) / 100)"
+                        + " + IFNULL(score, 0) * 2"
+                        + " + CASE WHEN id IN (SELECT product_id FROM tb_voucher WHERE status = 1) THEN 15 ELSE 0 END"
+                        + " + CASE WHEN title LIKE '" + escaped + "%' THEN 20"
+                        + "   WHEN title LIKE '%" + escaped + "%' THEN 10 ELSE 0 END"
+                        + ") DESC, sold DESC, create_time DESC")
                 .page(new Page<>(pageNo, SystemConstants.MAX_PAGE_SIZE))
                 .getRecords();
     }
@@ -569,8 +636,12 @@ public class ContentServiceImpl implements IContentService {
     }
 
     private int normalizePage(Integer current) {
-        return current == null || current < 1 ? 1 : current;
+        if (current == null || current < 1) {
+            return 1;
+        }
+        return current;
     }
+
 
     /**
      * 按收藏时间顺序批量恢复笔记详情。
@@ -952,16 +1023,6 @@ public class ContentServiceImpl implements IContentService {
         trendMap.putIfAbsent(keyword, Math.max(heat, 1L));
     }
 
-    private Long toLong(Object value) {
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        if (value == null) {
-            return 0L;
-        }
-        return Long.parseLong(String.valueOf(value));
-    }
-
     private AiChatRequest toAiChatRequest(ContentAiRequest request, String message) {
         AiChatRequest aiRequest = new AiChatRequest();
         aiRequest.setSessionId(request == null ? null : request.getSessionId());
@@ -1003,5 +1064,225 @@ public class ContentServiceImpl implements IContentService {
         return "请总结这篇探店笔记的适合人群、核心亮点和注意事项。" +
                 "用三句话回答，不要编号，不要营销套话。" +
                 "标题：" + title + "。正文：" + content;
+    }
+
+    // ==================== 搜索联想 ====================
+
+    @Override
+    public Result suggestions(String prefix) {
+        String keyword = StrUtil.trim(prefix);
+        if (StrUtil.isBlank(keyword)) {
+            return Result.ok(List.of());
+        }
+        List<String> results = new ArrayList<>();
+
+        // 1. 话题前缀匹配
+        List<ContentTopic> topics = contentTopicMapper.selectList(
+                new QueryWrapper<ContentTopic>()
+                        .likeRight("keyword", keyword)
+                        .orderByDesc("heat")
+                        .last("limit 5"));
+        topics.forEach(t -> results.add(t.getKeyword()));
+
+        // 2. 商品标题前缀匹配
+        if (results.size() < 8) {
+            List<MallProduct> products = mallProductService.query()
+                    .select("title")
+                    .eq("status", 1)
+                    .likeRight("title", keyword)
+                    .last("limit 5")
+                    .list();
+            for (MallProduct p : products) {
+                if (results.size() >= 8) break;
+                if (StrUtil.isNotBlank(p.getTitle()) && !results.contains(p.getTitle())) {
+                    results.add(p.getTitle());
+                }
+            }
+        }
+
+        // 3. 笔记标题前缀匹配
+        if (results.size() < 8) {
+            List<Blog> blogs = blogService.query()
+                    .select("title")
+                    .likeRight("title", keyword)
+                    .orderByDesc("liked")
+                    .last("limit 5")
+                    .list();
+            for (Blog b : blogs) {
+                if (results.size() >= 8) break;
+                if (StrUtil.isNotBlank(b.getTitle()) && !results.contains(b.getTitle())) {
+                    results.add(b.getTitle());
+                }
+            }
+        }
+
+        return Result.ok(results);
+    }
+
+    // ==================== 搜索历史 ====================
+
+    @Override
+    public Result searchHistory() {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
+        String key = RedisConstants.SEARCH_HISTORY_KEY + user.getId();
+        Set<String> history = stringRedisTemplate.opsForZSet().reverseRange(key, 0, RedisConstants.SEARCH_HISTORY_MAX - 1);
+        return Result.ok(history == null ? List.of() : history);
+    }
+
+    @Override
+    public Result deleteSearchHistory(String keyword) {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
+        String key = RedisConstants.SEARCH_HISTORY_KEY + user.getId();
+        stringRedisTemplate.opsForZSet().remove(key, keyword);
+        return Result.ok();
+    }
+
+    @Override
+    public Result clearSearchHistory() {
+        UserDTO user = UserHolder.getUser();
+        if (user == null) throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
+        String key = RedisConstants.SEARCH_HISTORY_KEY + user.getId();
+        stringRedisTemplate.delete(key);
+        return Result.ok();
+    }
+
+    private void saveSearchHistory(UserDTO user, String keyword) {
+        if (user == null || StrUtil.isBlank(keyword)) return;
+        try {
+            String key = RedisConstants.SEARCH_HISTORY_KEY + user.getId();
+            stringRedisTemplate.opsForZSet().add(key, keyword, System.currentTimeMillis());
+            stringRedisTemplate.opsForZSet().removeRange(key, 0, -(RedisConstants.SEARCH_HISTORY_MAX + 1));
+            stringRedisTemplate.expire(key, RedisConstants.SEARCH_HISTORY_TTL, java.util.concurrent.TimeUnit.DAYS);
+        } catch (Exception e) {
+            // 搜索历史保存失败不影响主流程
+        }
+    }
+
+    // ==================== 热搜榜 ====================
+
+    @Override
+    public Result hotSearch() {
+        // 优先从缓存读取
+        String cacheKey = RedisConstants.HOT_SEARCH_KEY;
+        Set<String> cached = stringRedisTemplate.opsForZSet().reverseRange(cacheKey, 0, 19);
+        if (cached != null && !cached.isEmpty()) {
+            List<ContentTrendDTO> list = new ArrayList<>();
+            for (String keyword : cached) {
+                Double score = stringRedisTemplate.opsForZSet().score(cacheKey, keyword);
+                list.add(new ContentTrendDTO(keyword, score == null ? 0L : score.longValue()));
+            }
+            return Result.ok(list);
+        }
+        // 缓存未命中，从DB构建
+        List<ContentTrendDTO> hotList = buildHotSearchList(20);
+        // 异步刷新缓存
+        try {
+            stringRedisTemplate.delete(cacheKey);
+            for (ContentTrendDTO dto : hotList) {
+                stringRedisTemplate.opsForZSet().add(cacheKey, dto.getKeyword(), dto.getHeat());
+            }
+            stringRedisTemplate.expire(cacheKey, RedisConstants.HOT_SEARCH_TTL, java.util.concurrent.TimeUnit.MINUTES);
+        } catch (Exception e) {
+            // 缓存刷新失败不影响返回
+        }
+        return Result.ok(hotList);
+    }
+
+    private List<ContentTrendDTO> buildHotSearchList(int limit) {
+        Map<String, Long> heatMap = new LinkedHashMap<>();
+
+        // 数据源1：搜索事件聚合（最权威）
+        try {
+            List<Map<String, Object>> searchEvents = noteEventMapper.selectMaps(
+                    new QueryWrapper<NoteEvent>()
+                            .select("keyword", "count(*) AS search_count")
+                            .eq("event_type", "search")
+                            .isNotNull("keyword")
+                            .groupBy("keyword")
+                            .orderByDesc("search_count")
+                            .last("limit " + limit));
+            for (Map<String, Object> row : searchEvents) {
+                String kw = String.valueOf(row.get("keyword")).trim();
+                if (StrUtil.isNotBlank(kw) && !"null".equals(kw)) {
+                    heatMap.put(kw, toLong(row.get("search_count")));
+                }
+            }
+        } catch (Exception e) {
+            // 查询失败跳过
+        }
+
+        // 数据源2：话题热度
+        List<ContentTopic> topics = contentTopicMapper.selectList(
+                new QueryWrapper<ContentTopic>()
+                        .orderByDesc("heat")
+                        .last("limit " + limit));
+        for (ContentTopic topic : topics) {
+            heatMap.putIfAbsent(topic.getKeyword(), topic.getHeat() == null ? 1L : topic.getHeat());
+        }
+
+        // 数据源3：高赞博客标题
+        if (heatMap.size() < 5) {
+            List<Blog> hotBlogs = blogService.query()
+                    .select("title", "liked")
+                    .isNotNull("title")
+                    .orderByDesc("liked")
+                    .last("limit " + (limit - heatMap.size()))
+                    .list();
+            for (Blog blog : hotBlogs) {
+                if (StrUtil.isNotBlank(blog.getTitle())) {
+                    heatMap.putIfAbsent(blog.getTitle(), blog.getLiked() == null ? 1L : blog.getLiked().longValue());
+                }
+            }
+        }
+
+        // 兜底数据
+        heatMap.putIfAbsent("附近约会餐厅", 96L);
+        heatMap.putIfAbsent("人均50宝藏店", 88L);
+        heatMap.putIfAbsent("周末拍照咖啡", 76L);
+
+        return heatMap.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(limit)
+                .map(e -> new ContentTrendDTO(e.getKey(), e.getValue()))
+                .toList();
+    }
+
+    private long toLong(Object value) {
+        if (value == null) return 0L;
+        if (value instanceof Number number) return number.longValue();
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    // ==================== 附近流 GEO ====================
+
+    private List<Long> findNearbyShopIds(Double x, Double y, double radiusMeters) {
+        List<Long> shopIds = new ArrayList<>();
+        try {
+            String key = RedisConstants.SHOP_GEO_ALL_KEY;
+            var results = stringRedisTemplate.opsForGeo().search(
+                    key,
+                    org.springframework.data.geo.GeoReference.fromCoordinate(x, y),
+                    new org.springframework.data.geo.Distance(radiusMeters),
+                    org.springframework.data.redis.connection.RedisGeoCommands.GeoSearchCommandArgs
+                            .newGeoSearchArgs().includeDistance().limit(50));
+            if (results != null) {
+                for (var result : results.getContent()) {
+                    try {
+                        shopIds.add(Long.valueOf(result.getContent().getName()));
+                    } catch (NumberFormatException e) {
+                        // skip invalid entries
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // GEO 查询失败返回空列表
+        }
+        return shopIds;
     }
 }

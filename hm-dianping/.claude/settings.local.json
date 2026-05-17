@@ -4,7 +4,23 @@
       "WebSearch",
       "WebFetch(domain:www.xiaohongshu.com)",
       "WebFetch(domain:github.com)",
-      "Bash(mvn spring-boot:run:*)"
+      "Bash(mvn spring-boot:run:*)",
+      "Bash(mvn compile:*)",
+      "Bash(\"D:/桌面/aaa文件/java/Redis-笔记资料/点评/hm-dianping/hm-dianping/docker/mysql/init.sql\":*)",
+      "Bash(wc:*)",
+      "Bash(curl:*)",
+      "Bash(npx puppeteer:*)",
+      "Bash(powershell:*)",
+      "Bash(node:*)",
+      "Bash(npx:*)",
+      "Bash(npm install:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(magick:*)",
+      "Bash(do echo:*)",
+      "Bash(taskkill:*)",
+      "Bash(redis-cli:*)",
+      "Bash(do node:*)"
     ]
   }
 }

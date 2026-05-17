@@ -6,12 +6,18 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.BlogCollect;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.BlogCollectMapper;
+import com.hmdp.enums.EventType;
 import com.hmdp.service.IBlogCollectService;
 import com.hmdp.service.IBlogService;
+import com.hmdp.service.INoteEventService;
 import com.hmdp.service.IUserNotificationService;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.UserHolder;
 import jakarta.annotation.Resource;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 /**
@@ -25,15 +31,19 @@ public class BlogCollectServiceImpl extends ServiceImpl<BlogCollectMapper, BlogC
 
     @Resource
     private IUserNotificationService notificationService;
+    @Resource
+    private INoteEventService noteEventService;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public Result collectBlog(Long blogId, Boolean collect) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         if (blogId == null) {
-            return Result.fail("笔记ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "笔记ID不能为空");
         }
         Long userId = user.getId();
         if (Boolean.TRUE.equals(collect)) {
@@ -47,6 +57,19 @@ public class BlogCollectServiceImpl extends ServiceImpl<BlogCollectMapper, BlogC
                 if (blog != null) {
                     notificationService.notifyUser(blog.getUserId(), userId, "COLLECT", "有人收藏了你的笔记",
                             "你的笔记《" + (blog.getTitle() == null ? "未命名笔记" : blog.getTitle()) + "》被收藏了。", blogId, null);
+                }
+                noteEventService.track(userId, blogId, EventType.COLLECT, null, null);
+                // 更新用户兴趣画像
+                if (blog != null && blog.getTags() != null) {
+                    for (String tag : blog.getTags().split(",")) {
+                        String trimmed = tag.trim();
+                        if (!trimmed.isEmpty()) {
+                            stringRedisTemplate.opsForZSet().incrementScore(
+                                    RedisConstants.USER_INTEREST_KEY + userId, trimmed, 4);
+                        }
+                    }
+                    stringRedisTemplate.expire(RedisConstants.USER_INTEREST_KEY + userId,
+                            RedisConstants.USER_INTEREST_TTL, java.util.concurrent.TimeUnit.DAYS);
                 }
             }
         } else {

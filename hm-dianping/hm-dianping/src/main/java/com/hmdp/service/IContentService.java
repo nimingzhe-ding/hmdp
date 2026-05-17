@@ -13,12 +13,14 @@ public interface IContentService {
     /**
      * 查询首页内容流。
      *
-     * @param channel 频道：hot/follow/nearby/search
+     * @param channel 频道：hot/follow/nearby/recommend/video/mall
      * @param query 搜索词，可为空
      * @param current 页码
+     * @param x 经度（附近流可选）
+     * @param y 纬度（附近流可选）
      * @return 内容流卡片列表
      */
-    Result feed(String channel, String query, Integer current);
+    Result feed(String channel, String query, Integer current, Double x, Double y);
 
     /**
      * 统一搜索笔记、视频、商品、商家和话题。
@@ -84,6 +86,31 @@ public interface IContentService {
      * 查询搜索和内容趋势词。
      */
     Result trends();
+
+    /**
+     * 搜索联想：前缀匹配话题、商品、笔记标题。
+     */
+    Result suggestions(String prefix);
+
+    /**
+     * 查询当前用户的搜索历史。
+     */
+    Result searchHistory();
+
+    /**
+     * 删除当前用户的一条搜索历史。
+     */
+    Result deleteSearchHistory(String keyword);
+
+    /**
+     * 清空当前用户的搜索历史。
+     */
+    Result clearSearchHistory();
+
+    /**
+     * 查询热搜榜。
+     */
+    Result hotSearch();
 
     /**
      * 生成内容搜索场景下的智能推荐。

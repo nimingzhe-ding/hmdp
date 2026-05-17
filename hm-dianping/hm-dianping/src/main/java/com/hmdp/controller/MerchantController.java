@@ -1,9 +1,11 @@
 package com.hmdp.controller;
 
+import com.hmdp.annotation.RequireRole;
 import com.hmdp.dto.MerchantProductRequest;
 import com.hmdp.dto.MerchantRequest;
 import com.hmdp.dto.MerchantVoucherRequest;
 import com.hmdp.dto.Result;
+import com.hmdp.enums.UserRole;
 import com.hmdp.service.IMerchantService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/merchant")
+@RequireRole(UserRole.MERCHANT)
 public class MerchantController {
 
     @Resource

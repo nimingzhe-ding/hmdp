@@ -8,6 +8,8 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.MallCartItem;
 import com.hmdp.entity.MallProduct;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.MallCartItemMapper;
 import com.hmdp.service.IMallCartService;
 import com.hmdp.service.IMallProductService;
@@ -33,18 +35,18 @@ public class MallCartServiceImpl extends ServiceImpl<MallCartItemMapper, MallCar
     public Result add(MallCartRequest request) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         if (request == null || request.getProductId() == null) {
-            return Result.fail("商品ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "商品ID不能为空");
         }
         int quantity = request.getQuantity() == null || request.getQuantity() < 1 ? 1 : request.getQuantity();
         MallProduct product = productService.getById(request.getProductId());
         if (product == null || product.getStatus() == null || product.getStatus() != 1) {
-            return Result.fail("商品不存在或已下架");
+            throw new BusinessException(ErrorCode.PRODUCT_NOT_ONLINE);
         }
         if (product.getStock() != null && product.getStock() < quantity) {
-            return Result.fail("库存不足");
+            throw new BusinessException(ErrorCode.STOCK_NOT_ENOUGH);
         }
         MallCartItem existing = query()
                 .eq("user_id", user.getId())
@@ -69,7 +71,7 @@ public class MallCartServiceImpl extends ServiceImpl<MallCartItemMapper, MallCar
     public Result listMine() {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         List<MallCartItem> items = query().eq("user_id", user.getId()).orderByDesc("update_time").list();
         if (items.isEmpty()) {
@@ -88,7 +90,7 @@ public class MallCartServiceImpl extends ServiceImpl<MallCartItemMapper, MallCar
     public Result removeItem(Long id) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         remove(new QueryWrapper<MallCartItem>()
                 .eq("id", id)

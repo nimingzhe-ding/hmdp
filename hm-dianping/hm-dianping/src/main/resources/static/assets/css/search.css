@@ -1,0 +1,50 @@
+/* ── Search: additional overrides for unified search results ── */
+
+/* Search-specific card and layout refinements */
+.unified-note-results .note-card {
+  margin-bottom: 12px;
+}
+
+.unified-note-results .note-title {
+  font-size: 13px;
+}
+
+.unified-search .ai-suggestion-row {
+  margin-bottom: 4px;
+}
+
+.trend-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.trend-list button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: #fff;
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--dur-fast) ease;
+}
+
+.trend-list button:hover {
+  background: var(--accent-light);
+}
+
+.trend-list strong {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.trend-list small {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}

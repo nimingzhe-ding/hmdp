@@ -4,6 +4,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -20,9 +22,11 @@ public class CacheClient {
     private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(5);
 
     private final StringRedisTemplate stringRedisTemplate;
+    private final RedissonClient redissonClient;
 
-    public CacheClient(StringRedisTemplate stringRedisTemplate) {
+    public CacheClient(StringRedisTemplate stringRedisTemplate, RedissonClient redissonClient) {
         this.stringRedisTemplate = stringRedisTemplate;
+        this.redissonClient = redissonClient;
     }
 
     public void set(String key, Object value, Long time, TimeUnit timeUnit) {
@@ -72,7 +76,8 @@ public class CacheClient {
         }
 
         String lockKey = RedisConstants.LOCK_SHOP_KEY + id;
-        boolean locked = tryLock(lockKey);
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean locked = lock.tryLock(0, 30, TimeUnit.SECONDS);
         if (!locked) {
             return value;
         }
@@ -84,19 +89,10 @@ public class CacheClient {
             } catch (Exception e) {
                 log.error("重建缓存失败, key={}", key, e);
             } finally {
-                unlock(lockKey);
+                try { lock.unlock(); } catch (Exception ignored) { /* 固定租约到期自动释放 */ }
             }
         });
         return value;
-    }
-
-    private boolean tryLock(String key) {
-        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", RedisConstants.LOCK_SHOP_TTL, TimeUnit.SECONDS);
-        return Boolean.TRUE.equals(flag);
-    }
-
-    private void unlock(String key) {
-        stringRedisTemplate.delete(key);
     }
 
     @PreDestroy

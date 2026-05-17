@@ -13,6 +13,8 @@ import com.hmdp.entity.LiveRoomProduct;
 import com.hmdp.entity.MallProduct;
 import com.hmdp.entity.Merchant;
 import com.hmdp.enums.ContentType;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.mapper.LiveRoomMapper;
 import com.hmdp.mapper.LiveRoomMessageMapper;
 import com.hmdp.mapper.LiveRoomProductMapper;
@@ -81,7 +83,7 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
     public Result detail(Long roomId) {
         LiveRoom room = getById(roomId);
         if (room == null) {
-            return Result.fail("直播间不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "直播间不存在");
         }
         attachProducts(List.of(room));
         Map<String, Object> result = new LinkedHashMap<>();
@@ -94,7 +96,7 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
     public Result listMine(Integer status) {
         Merchant merchant = currentMerchant();
         if (merchant == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         var wrapper = query()
                 .eq("merchant_id", merchant.getId())
@@ -111,10 +113,10 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
         Merchant merchant = currentMerchant();
         UserDTO user = UserHolder.getUser();
         if (merchant == null || user == null) {
-            return Result.fail("请先开通商家中心");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "请先开通商家中心");
         }
         if (room == null || StrUtil.isBlank(room.getTitle())) {
-            return Result.fail("直播标题不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "直播标题不能为空");
         }
         LocalDateTime now = LocalDateTime.now();
         room.setId(null);
@@ -135,7 +137,7 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
     public Result openRoom(Long roomId) {
         LiveRoom room = checkMerchantRoom(roomId);
         if (room == null) {
-            return Result.fail("直播间不存在或无权限");
+            throw new BusinessException(ErrorCode.NO_PERMISSION, "直播间不存在或无权限");
         }
         LocalDateTime now = LocalDateTime.now();
         boolean updated = update()
@@ -144,7 +146,10 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
                 .set("update_time", now)
                 .eq("id", roomId)
                 .update();
-        return updated ? detail(roomId) : Result.fail("开播失败");
+        if (!updated) {
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "开播失败");
+        }
+        return detail(roomId);
     }
 
     @Override
@@ -152,7 +157,7 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
     public Result closeRoom(Long roomId, String replayVideoUrl) {
         LiveRoom room = checkMerchantRoom(roomId);
         if (room == null) {
-            return Result.fail("直播间不存在或无权限");
+            throw new BusinessException(ErrorCode.NO_PERMISSION, "直播间不存在或无权限");
         }
         String replay = StrUtil.blankToDefault(StrUtil.trim(replayVideoUrl), room.getReplayVideoUrl());
         LocalDateTime now = LocalDateTime.now();
@@ -164,7 +169,7 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
                 .eq("id", roomId)
                 .update();
         if (!updated) {
-            return Result.fail("关播失败");
+            throw new BusinessException(ErrorCode.OPERATION_FAIL, "关播失败");
         }
         if (StrUtil.isNotBlank(replay)) {
             bindReplayVideo(room, replay, now);
@@ -177,7 +182,7 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
     public Result updateProducts(Long roomId, List<LiveRoomProduct> products) {
         LiveRoom room = checkMerchantRoom(roomId);
         if (room == null) {
-            return Result.fail("直播间不存在或无权限");
+            throw new BusinessException(ErrorCode.NO_PERMISSION, "直播间不存在或无权限");
         }
         liveRoomProductMapper.delete(new LambdaQueryWrapper<LiveRoomProduct>().eq(LiveRoomProduct::getRoomId, roomId));
         saveProducts(roomId, products == null ? List.of() : products, room.getMerchantId());
@@ -188,17 +193,17 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
     public Result sendMessage(Long roomId, LiveRoomMessage message) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         LiveRoom room = getById(roomId);
         if (room == null) {
-            return Result.fail("直播间不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "直播间不存在");
         }
         if (room.getStatus() == null || room.getStatus() != STATUS_LIVING) {
-            return Result.fail("直播间未开播");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "直播间未开播");
         }
         if (message == null || StrUtil.isBlank(message.getContent())) {
-            return Result.fail("弹幕内容不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "弹幕内容不能为空");
         }
         LiveRoomMessage saved = new LiveRoomMessage()
                 .setRoomId(roomId)
@@ -224,7 +229,10 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
                 .set("update_time", LocalDateTime.now())
                 .eq("id", roomId)
                 .update();
-        return updated ? detail(roomId) : Result.fail("直播间不存在");
+        if (!updated) {
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "直播间不存在");
+        }
+        return detail(roomId);
     }
 
     @Override
@@ -235,7 +243,10 @@ public class LiveRoomServiceImpl extends ServiceImpl<LiveRoomMapper, LiveRoom> i
                 .set("update_time", LocalDateTime.now())
                 .eq("id", roomId)
                 .update();
-        return updated ? detail(roomId) : Result.fail("直播间不存在");
+        if (!updated) {
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "直播间不存在");
+        }
+        return detail(roomId);
     }
 
     private List<LiveRoom> attachProducts(List<LiveRoom> rooms) {

@@ -20,5 +20,21 @@ public class RedisConstants {
     public static final String SHOP_GEO_KEY = "shop:geo:";
     public static final String USER_SIGN_KEY = "sign:";
     public static final String CACHE_SHOP_TYPE_KEY = "cache:shopType:";
+
+    // 用户兴趣画像（个性化推荐）
+    public static final String USER_INTEREST_KEY = "user:interest:";
+    public static final Long USER_INTEREST_TTL = 7L;
+
+    // 搜索历史
+    public static final String SEARCH_HISTORY_KEY = "search:history:";
+    public static final Long SEARCH_HISTORY_MAX = 20L;
+    public static final Long SEARCH_HISTORY_TTL = 90L;
+
+    // 全局店铺GEO索引（附近流）
+    public static final String SHOP_GEO_ALL_KEY = "shop:geo:all";
+
+    // 热搜榜缓存
+    public static final String HOT_SEARCH_KEY = "hot:search";
+    public static final Long HOT_SEARCH_TTL = 15L;
 }
 

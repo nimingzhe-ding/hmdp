@@ -7,6 +7,8 @@ import com.hmdp.entity.ShopType;
 import com.hmdp.mapper.ShopTypeMapper;
 import com.hmdp.service.IShopTypeService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.utils.RedisConstants;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -40,7 +42,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
         List<ShopType> typeList = query().orderByAsc("sort").list();
         //判断数据库是否存在
         if(typeList == null || typeList.size() == 0){
-            return Result.fail("店铺类型不存在！");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "店铺类型不存在！");
         }
         //存在，存入redis缓存
         stringRedisTemplate.opsForValue().set(RedisConstants.CACHE_SHOP_TYPE_KEY, JSONUtil.toJsonStr(typeList));

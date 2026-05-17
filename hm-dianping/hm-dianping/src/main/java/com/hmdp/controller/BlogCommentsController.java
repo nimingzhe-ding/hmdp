@@ -6,8 +6,12 @@ import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.BlogComments;
 import com.hmdp.entity.User;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.enums.EventType;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.service.IBlogCommentsService;
 import com.hmdp.service.IBlogService;
+import com.hmdp.service.INoteEventService;
 import com.hmdp.service.IUserService;
 import com.hmdp.service.IUserNotificationService;
 import com.hmdp.utils.UserHolder;
@@ -49,6 +53,9 @@ public class BlogCommentsController {
 
     @Resource
     private IUserNotificationService notificationService;
+
+    @Resource
+    private INoteEventService noteEventService;
 
     /**
      * 查询笔记评论流。
@@ -111,13 +118,13 @@ public class BlogCommentsController {
     public Result saveComment(@RequestBody BlogComments comment) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         if (comment.getBlogId() == null) {
-            return Result.fail("笔记ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "笔记ID不能为空");
         }
         if (comment.getContent() == null || comment.getContent().trim().isEmpty()) {
-            return Result.fail("评论内容不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "评论内容不能为空");
         }
         comment.setId(null);
         comment.setUserId(user.getId());
@@ -126,7 +133,7 @@ public class BlogCommentsController {
         if (parentId > 0) {
             BlogComments parentComment = commentsService.getById(parentId);
             if (parentComment == null || !comment.getBlogId().equals(parentComment.getBlogId()) || !isVisible(parentComment)) {
-                return Result.fail("回复的评论不存在");
+                throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "回复的评论不存在");
             }
         }
         comment.setParentId(parentId);
@@ -139,6 +146,7 @@ public class BlogCommentsController {
                 .eq("id", comment.getBlogId())
                 .update();
         notifyCommentReceivers(comment, user.getId());
+        noteEventService.track(user.getId(), comment.getBlogId(), EventType.COMMENT, null, null);
         return Result.ok(commentResult(comment.getId(), comment.getBlogId()));
     }
 
@@ -164,10 +172,10 @@ public class BlogCommentsController {
     @PutMapping("/like/{id}")
     public Result likeComment(@PathVariable("id") Long commentId) {
         if (UserHolder.getUser() == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         if (commentId == null) {
-            return Result.fail("评论ID不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "评论ID不能为空");
         }
         boolean success = commentsService.update()
                 .setSql("liked = IFNULL(liked, 0) + 1")
@@ -175,7 +183,7 @@ public class BlogCommentsController {
                 .and(wrapper -> wrapper.eq("status", 0).or().isNull("status"))
                 .update();
         if (!success) {
-            return Result.fail("评论不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "评论不存在");
         }
         BlogComments comment = commentsService.getById(commentId);
         return Result.ok(comment == null ? 0 : comment.getLiked());
@@ -188,14 +196,14 @@ public class BlogCommentsController {
     public Result deleteComment(@PathVariable("id") Long commentId) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         BlogComments comment = commentsService.getById(commentId);
         if (!isVisible(comment)) {
-            return Result.fail("评论不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "评论不存在");
         }
         if (!comment.getUserId().equals(user.getId())) {
-            return Result.fail("无权删除");
+            throw new BusinessException(ErrorCode.NO_PERMISSION, "无权删除");
         }
         long affected = updateCommentThreadStatus(comment, 2);
         decreaseBlogCommentCount(comment.getBlogId(), affected);
@@ -209,14 +217,14 @@ public class BlogCommentsController {
     public Result reportComment(@PathVariable("id") Long commentId) {
         UserDTO user = UserHolder.getUser();
         if (user == null) {
-            return Result.fail("请先登录");
+            throw new BusinessException(ErrorCode.USER_NOT_LOGIN);
         }
         BlogComments comment = commentsService.getById(commentId);
         if (!isVisible(comment)) {
-            return Result.fail("评论不存在");
+            throw new BusinessException(ErrorCode.DATA_NOT_EXIST, "评论不存在");
         }
         if (comment.getUserId().equals(user.getId())) {
-            return Result.fail("不能举报自己的评论");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "不能举报自己的评论");
         }
         long affected = updateCommentThreadStatus(comment, 1);
         decreaseBlogCommentCount(comment.getBlogId(), affected);

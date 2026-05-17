@@ -7,6 +7,8 @@ import com.hmdp.ai.enums.AiScene;
 import com.hmdp.ai.service.AiAssistantService;
 import com.hmdp.dto.AiFlowRequest;
 import com.hmdp.dto.Result;
+import com.hmdp.enums.ErrorCode;
+import com.hmdp.exception.BusinessException;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.MallOrder;
 import com.hmdp.entity.MallProduct;
@@ -137,7 +139,7 @@ public class AiAssistantController {
     @DeleteMapping("/session/{scene}/{sessionId}")
     public Result clearConversation(@PathVariable("scene") String scene, @PathVariable("sessionId") String sessionId) {
         if (StrUtil.isBlank(sessionId)) {
-            return Result.fail("sessionId 不能为空");
+            throw new BusinessException(ErrorCode.PARAM_EMPTY, "sessionId 不能为空");
         }
         aiAssistantService.clearConversation(AiScene.fromCode(scene), sessionId);
         return Result.ok();

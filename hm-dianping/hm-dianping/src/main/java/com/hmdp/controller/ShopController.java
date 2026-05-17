@@ -3,8 +3,10 @@ package com.hmdp.controller;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.hmdp.annotation.RequireRole;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
+import com.hmdp.enums.UserRole;
 import com.hmdp.service.IShopService;
 import com.hmdp.utils.SystemConstants;
 import org.springframework.web.bind.annotation.*;
@@ -43,6 +45,7 @@ public class ShopController {
      * @return 商铺id
      */
     @PostMapping
+    @RequireRole(UserRole.MERCHANT)
     public Result saveShop(@RequestBody Shop shop) {
         // 写入数据库
         shopService.save(shop);
@@ -56,6 +59,7 @@ public class ShopController {
      * @return 无
      */
     @PutMapping
+    @RequireRole(UserRole.MERCHANT)
     public Result updateShop(@RequestBody Shop shop) {
         // 写入数据库
         return shopService.update(shop);
